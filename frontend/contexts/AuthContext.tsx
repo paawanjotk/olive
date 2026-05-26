@@ -1,9 +1,8 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { syncUser } from '@/lib/api'
 
 interface AuthContextValue {
   session: Session | null
@@ -20,24 +19,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
-  const handleSession = useCallback(async (s: Session | null) => {
-    setSession(s)
-    if (s?.access_token) {
-      try { await syncUser(s.access_token) } catch { /* non-fatal */ }
-    }
-  }, [])
-
   useEffect(() => {
+    // Restore session on mount — just read, no sync.
     supabase.auth.getSession().then(({ data }) => {
-      handleSession(data.session).finally(() => setLoading(false))
+      setSession(data.session)
+      setLoading(false)
     })
 
+    // Keep session state in sync (token refresh, sign-out, etc.) — no backend calls here.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
-      handleSession(s)
+      setSession(s)
     })
 
     return () => subscription.unsubscribe()
-  }, [handleSession])
+  }, [])
 
   const signInWithGoogle = async () => {
     await supabase.auth.signInWithOAuth({
