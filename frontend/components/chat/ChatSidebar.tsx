@@ -12,6 +12,7 @@ import {
   Check,
   X,
   Pencil,
+  LogOut,
 } from 'lucide-react'
 import { cn, truncate } from '@/lib/utils'
 import type { Session, User } from '@/lib/types'
@@ -29,6 +30,7 @@ interface ChatSidebarProps {
   deleteSession: (id: string) => void
   renameSession: (id: string, title: string) => void
   onViewChange: (view: AppView) => void
+  onSignOut: () => void
 }
 
 function SessionSkeleton() {
@@ -178,6 +180,7 @@ export default function ChatSidebar({
   deleteSession,
   renameSession,
   onViewChange,
+  onSignOut,
 }: ChatSidebarProps) {
   const initials = user?.name
     ? user.name
@@ -269,21 +272,30 @@ export default function ChatSidebar({
 
       {/* User footer */}
       <div className="px-2 py-2.5 border-t border-white/[0.06]">
-        <button className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/[0.06] transition-colors text-left">
-          <div className="w-8 h-8 rounded-full bg-[#10a37f] flex items-center justify-center text-white text-xs font-bold flex-shrink-0 select-none">
-            {initials}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate leading-tight">
-              {displayName}
-            </p>
-            {user?.email && (
-              <p className="text-[#686868] text-xs truncate leading-tight mt-0.5">
-                {user.email}
+        <div className="flex items-center gap-1">
+          <div className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg min-w-0">
+            <div className="w-8 h-8 rounded-full bg-[#10a37f] flex items-center justify-center text-white text-xs font-bold flex-shrink-0 select-none">
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-white text-sm font-medium truncate leading-tight">
+                {displayName}
               </p>
-            )}
+              {user?.email && (
+                <p className="text-[#686868] text-xs truncate leading-tight mt-0.5">
+                  {user.email}
+                </p>
+              )}
+            </div>
           </div>
-        </button>
+          <button
+            onClick={onSignOut}
+            title="Sign out"
+            className="p-2 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-colors flex-shrink-0"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
       </div>
     </aside>
   )

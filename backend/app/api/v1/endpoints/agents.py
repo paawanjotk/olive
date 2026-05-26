@@ -1,11 +1,11 @@
 import uuid
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_session_factory
+from app.dependencies.auth import get_current_user
 from app.schemas.agents import AgentCreate, AgentUpdate, AgentResponse, AgentTestRequest, AgentTestResponse
 from app.services import agent_service
 
@@ -22,27 +22,32 @@ async def get_db():
 @router.post("", response_model=AgentResponse, status_code=201)
 async def create_agent(
     body: AgentCreate,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    agent = await agent_service.create_agent(db, body)
-    return agent
+    user_id = uuid.UUID(current_user["id"])
+    return await agent_service.create_agent(db, body, user_id)
 
 
 @router.get("", response_model=list[AgentResponse])
 async def list_agents(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await agent_service.list_agents(db, skip=skip, limit=limit)
+    user_id = uuid.UUID(current_user["id"])
+    return await agent_service.list_agents(db, user_id, skip=skip, limit=limit)
 
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 async def get_agent(
     agent_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    agent = await agent_service.get_agent(db, agent_id)
+    user_id = uuid.UUID(current_user["id"])
+    agent = await agent_service.get_agent(db, agent_id, user_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
@@ -52,9 +57,11 @@ async def get_agent(
 async def update_agent(
     agent_id: uuid.UUID,
     body: AgentUpdate,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    agent = await agent_service.update_agent(db, agent_id, body)
+    user_id = uuid.UUID(current_user["id"])
+    agent = await agent_service.update_agent(db, agent_id, body, user_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
@@ -63,9 +70,11 @@ async def update_agent(
 @router.delete("/{agent_id}", status_code=204)
 async def delete_agent(
     agent_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    deleted = await agent_service.delete_agent(db, agent_id)
+    user_id = uuid.UUID(current_user["id"])
+    deleted = await agent_service.delete_agent(db, agent_id, user_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -74,10 +83,11 @@ async def delete_agent(
 async def test_agent(
     agent_id: uuid.UUID,
     body: AgentTestRequest,
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Run a single message against an agent and return the full response (non-streaming)."""
-    agent = await agent_service.get_agent(db, agent_id)
+    user_id = uuid.UUID(current_user["id"])
+    agent = await agent_service.get_agent(db, agent_id, user_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Agent not found")
 
@@ -107,7 +117,4 @@ async def test_agent(
         logger.error("Agent test failed for %s: %s", agent_id, e)
         raise HTTPException(status_code=500, detail=f"Agent test failed: {e}")
 
-    return AgentTestResponse(
-        response="".join(collected),
-        provider_used=provider_used,
-    )
+    return AgentTestResponse(response="".join(collected), provider_used=provider_used)

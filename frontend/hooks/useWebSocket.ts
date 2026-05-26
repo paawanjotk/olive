@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useCallback, useState } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const WS_BASE =
   process.env.NEXT_PUBLIC_BACKEND_WS_URL || 'ws://localhost:8000'
@@ -45,7 +46,7 @@ export function useWebSocket({
     onDisconnectRef.current = onDisconnect
   }, [onDisconnect])
 
-  const connect = useCallback(() => {
+  const connect = useCallback(async () => {
     if (!isMountedRef.current) return
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
@@ -54,7 +55,11 @@ export function useWebSocket({
       return
     }
 
-    const wsUrl = `${WS_BASE}/api/v1/ws/chat/${clientId}`
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+    if (!token) return  // not authenticated — don't connect
+
+    const wsUrl = `${WS_BASE}/api/v1/ws/chat/${clientId}?token=${encodeURIComponent(token)}`
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 

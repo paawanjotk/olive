@@ -1,15 +1,24 @@
 import type { User, Session, Message, Agent, AgentCreate, AgentUpdate } from './types'
+import { supabase } from './supabase'
 
 const HTTP_BASE =
   process.env.NEXT_PUBLIC_BACKEND_HTTP_URL || 'http://localhost:8000'
 const API_BASE = `${HTTP_BASE}/api/v1`
 
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) return {}
+  return { Authorization: `Bearer ${session.access_token}` }
+}
+
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const authHeaders = await getAuthHeaders()
   const url = `${API_BASE}${path}`
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...options?.headers,
     },
     ...options,
@@ -37,6 +46,21 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>
+}
+
+// ---- Auth ----
+
+export async function syncUser(accessToken: string): Promise<User> {
+  const url = `${API_BASE}/auth/sync`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+  if (!response.ok) throw new Error(`Sync failed: ${response.status}`)
+  return response.json()
 }
 
 // ---- User endpoints ----

@@ -1,12 +1,10 @@
 'use client'
 
-
-
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { useChatStore } from '@/store/chatStore'
 import { useWebSocket } from './useWebSocket'
+import { useAuth } from '@/contexts/AuthContext'
 import {
-  createOrGetUser,
   getSessions,
   getSessionMessages,
   deleteSession as apiDeleteSession,
@@ -16,13 +14,10 @@ import { generateUUID } from '@/lib/utils'
 import type { WSMessageType, Message } from '@/lib/types'
 
 const CLIENT_ID_KEY = 'ollive_client_id'
-const USER_STORAGE_KEY = 'ollive_user'
-
-const DEFAULT_USER_NAME = 'Guest'
-const DEFAULT_USER_EMAIL = 'guest@ollive.app'
 
 export function useChat() {
   const store = useChatStore()
+  const { user: supabaseUser, session } = useAuth()
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
 
@@ -206,43 +201,22 @@ export function useChat() {
     onMessage: handleWsMessage,
   })
 
-  // Initialize user on mount
+  // Sync store user whenever Supabase session changes
   useEffect(() => {
-    async function initUser() {
-      if (typeof window === 'undefined') return
-
-      // Try to restore from localStorage
-      try {
-        const savedRaw = localStorage.getItem(USER_STORAGE_KEY)
-        if (savedRaw) {
-          const saved = JSON.parse(savedRaw)
-          if (saved?.id && saved?.email) {
-            const user = await createOrGetUser(saved.name, saved.email)
-            store.setUser(user)
-            // Re-save with fresh data from server
-            localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
-            await loadSessions(user.id)
-            return
-          }
-        }
-      } catch (err) {
-        console.error('Failed to restore user session:', err)
-      }
-
-      // Create a new guest user
-      try {
-        const user = await createOrGetUser(DEFAULT_USER_NAME, DEFAULT_USER_EMAIL)
-        store.setUser(user)
-        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user))
-        await loadSessions(user.id)
-      } catch (err) {
-        console.error('Failed to create user:', err)
-      }
+    if (!supabaseUser) {
+      store.setUser(null)
+      store.setSessions([])
+      return
     }
-
-    initUser()
+    const storeUser = {
+      id: supabaseUser.id,
+      name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'User',
+      email: supabaseUser.email || '',
+    }
+    store.setUser(storeUser)
+    loadSessions(supabaseUser.id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [supabaseUser?.id])
 
   const loadSessions = useCallback(
     async (userId: string) => {

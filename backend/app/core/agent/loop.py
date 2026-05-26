@@ -125,11 +125,6 @@ async def _stream_gemini(
     _sys_prompt = agent_config.effective_system_prompt if agent_config else SYSTEM_PROMPT
     _max_tok = agent_config.max_tokens if agent_config else settings.GEMINI_MAX_TOKENS
     _gemini_tool = _filtered_gemini_tools(agent_config.tools) if agent_config else GEMINI_TOOL_DEFS
-    config = gtypes.GenerateContentConfig(
-        max_output_tokens=_max_tok,
-        system_instruction=_sys_prompt,
-        tools=[_gemini_tool] if _gemini_tool else [],
-    )
     loop_obj = asyncio.get_running_loop()
     sequence = 0
     _max_rounds = agent_config.max_iterations if agent_config else _MAX_TOOL_ROUNDS
@@ -137,6 +132,15 @@ async def _stream_gemini(
     for _round in range(_max_rounds + 1):
         if cancel_event and cancel_event.is_set():
             return
+
+        # Strip tools on final round to force a synthesis text response
+        is_final_round = _round >= _max_rounds
+        _round_tool = None if is_final_round else _gemini_tool
+        config = gtypes.GenerateContentConfig(
+            max_output_tokens=_max_tok,
+            system_instruction=_sys_prompt,
+            tools=[_round_tool] if _round_tool else [],
+        )
 
         gen_trace = obs.start_trace(
             provider="gemini",
@@ -378,9 +382,17 @@ async def run_agent_turn(
                 if root_trace:
                     root_trace.complete()
             return  # finally still runs after return — root_trace.emit_nowait() fires
+        # max_iterations = number of tool-call rounds; the +1 below reserves one
+        # final synthesis round where tools are withheld so the LLM must write
+        # a text answer rather than calling more tools.
         for _round in range(config.max_iterations + 1):
             if cancel_event and cancel_event.is_set():
                 return
+
+            # On the last round, strip tools so the model is forced to synthesise
+            # a final text answer from all gathered context instead of looping further.
+            is_final_round = _round >= config.max_iterations
+            round_tools = [] if is_final_round else _filtered_anthropic_tools(config.tools)
 
             gen_trace = obs.start_trace(
                 provider="anthropic",
@@ -404,7 +416,7 @@ async def run_agent_turn(
                 model=settings.ANTHROPIC_MODEL,
                 max_tokens=config.max_tokens,
                 system=config.effective_system_prompt,
-                tools=_filtered_anthropic_tools(config.tools),
+                tools=round_tools,
                 messages=current_messages,
             ) as stream:
                 async for event in stream:

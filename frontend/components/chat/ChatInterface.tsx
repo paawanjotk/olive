@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useChat } from '@/hooks/useChat'
+import { useAuth } from '@/contexts/AuthContext'
 import ChatSidebar from './ChatSidebar'
 import ChatMain from './ChatMain'
 import AgentsPanel from '@/components/agents/AgentsPanel'
@@ -9,8 +11,16 @@ import AgentsPanel from '@/components/agents/AgentsPanel'
 type AppView = 'chat' | 'agents'
 
 export default function ChatInterface() {
+  const { session, loading, signOut } = useAuth()
+  const router = useRouter()
   const chat = useChat()
   const [activeView, setActiveView] = useState<AppView>('chat')
+
+  useEffect(() => {
+    if (!loading && !session) router.replace('/login')
+  }, [session, loading, router])
+
+  if (loading || !session) return null
 
   return (
     <div className="flex h-screen bg-[#0d0d0d] overflow-hidden">
@@ -25,6 +35,7 @@ export default function ChatInterface() {
         deleteSession={chat.deleteSession}
         renameSession={chat.renameSession}
         onViewChange={setActiveView}
+        onSignOut={signOut}
       />
 
       {activeView === 'agents' ? (

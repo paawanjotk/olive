@@ -16,6 +16,12 @@ class Agent(Base):
         default=uuid.uuid4,
         server_default=sa.text("gen_random_uuid()"),
     )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name: Mapped[str] = mapped_column(sa.String(255), nullable=False)
     description: Mapped[str] = mapped_column(sa.Text, nullable=False, server_default="")
     role: Mapped[str] = mapped_column(sa.String(100), nullable=False, server_default="assistant")

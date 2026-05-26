@@ -4,9 +4,10 @@ import uuid
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.db.base import get_session_factory
+from app.dependencies.auth import verify_websocket_token
 from app.services.chat_service import process_chat_message
 
 router = APIRouter()
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 async def websocket_chat_endpoint(
     websocket: WebSocket,
     client_id: str,
+    token: str = Query(..., description="Supabase JWT access token"),
 ):
     """
     WebSocket endpoint for streaming chat.
@@ -32,8 +34,15 @@ async def websocket_chat_endpoint(
         {"type": "stopped",      "session_id": "uuid"}
         {"type": "error",        "error": "..."}
     """
+    # Validate JWT before accepting the connection
+    try:
+        jwt_user = await verify_websocket_token(token)
+    except Exception:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
-    logger.info(f"WebSocket connected: client_id={client_id}")
+    logger.info(f"WebSocket connected: client_id={client_id}, user={jwt_user['id']}")
 
     session_factory = get_session_factory()
     cancel_event = asyncio.Event()
@@ -98,20 +107,8 @@ async def websocket_chat_endpoint(
                 )
                 continue
 
-            user_id_str = data.get("user_id")
-            if not user_id_str:
-                await websocket.send_text(
-                    json.dumps({"type": "error", "error": "user_id is required"})
-                )
-                continue
-
-            try:
-                user_id = uuid.UUID(user_id_str)
-            except ValueError:
-                await websocket.send_text(
-                    json.dumps({"type": "error", "error": "Invalid user_id format"})
-                )
-                continue
+            # user_id comes from the verified JWT, not the client payload
+            user_id = uuid.UUID(jwt_user["id"])
 
             session_id: Optional[uuid.UUID] = None
             session_id_str = data.get("session_id")
