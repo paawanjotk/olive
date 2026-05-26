@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: #0d0d0d;
+  color: #ffffff;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #444;
+}
+
+/* Selection */
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+}
+
+/* Prose / markdown styles for chat */
+.prose-chat {
+  color: #e5e7eb;
+  line-height: 1.7;
+  font-size: 0.9375rem;
+}
+
+.prose-chat p {
+  margin-bottom: 0.75em;
+}
+
+.prose-chat p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-chat h1,
+.prose-chat h2,
+.prose-chat h3,
+.prose-chat h4 {
+  color: #ffffff;
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+
+.prose-chat h1 { font-size: 1.375rem; }
+.prose-chat h2 { font-size: 1.25rem; }
+.prose-chat h3 { font-size: 1.125rem; }
+.prose-chat h4 { font-size: 1rem; }
+
+.prose-chat strong {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.prose-chat em {
+  color: #d1d5db;
+  font-style: italic;
+}
+
+.prose-chat a {
+  color: #8b5cf6;
+  text-decoration: underline;
+  text-decoration-color: rgba(139, 92, 246, 0.4);
+}
+
+.prose-chat a:hover {
+  color: #a78bfa;
+}
+
+.prose-chat ul,
+.prose-chat ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+.prose-chat ul {
+  list-style-type: disc;
+}
+
+.prose-chat ol {
+  list-style-type: decimal;
+}
+
+.prose-chat li {
+  margin-bottom: 0.3em;
+}
+
+.prose-chat blockquote {
+  border-left: 3px solid #7c3aed;
+  padding-left: 1em;
+  color: #9ca3af;
+  margin: 1em 0;
+  font-style: italic;
+}
+
+.prose-chat code {
+  background: rgba(124, 58, 237, 0.15);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+  font-size: 0.875em;
+  color: #c4b5fd;
+}
+
+.prose-chat pre {
+  background: #111111;
+  border: 1px solid #262626;
+  border-radius: 8px;
+  padding: 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.prose-chat pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #d1d5db;
+  font-size: 0.875em;
+}
+
+.prose-chat table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.875rem;
+}
+
+.prose-chat th {
+  background: #1f1f1f;
+  border: 1px solid #262626;
+  padding: 0.5em 0.75em;
+  text-align: left;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.prose-chat td {
+  border: 1px solid #262626;
+  padding: 0.5em 0.75em;
+  color: #d1d5db;
+}
+
+.prose-chat tr:nth-child(even) td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.prose-chat hr {
+  border: none;
+  border-top: 1px solid #262626;
+  margin: 1.5em 0;
+}
+
+/* Cursor animation for streaming */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor::after {
+  content: "▋";
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.5);
+  animation: cursor-blink 1s step-end infinite;
+  margin-left: 1px;
+  font-size: 0.9em;
+}
+
+/* Loading skeleton animation */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #1a1a1a 25%,
+    #242424 50%,
+    #1a1a1a 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
