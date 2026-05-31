@@ -76,15 +76,7 @@ async def process_chat_message(
                 except Exception as e:
                     logger.warning("Title generation failed: %s", e)
 
-        # 5. Set observe-me context vars so spans link to session/user
-        try:
-            import observe_me
-            observe_me.set_session_id(session_id_str)
-            observe_me.set_user_id(str(user_id))
-            observe_me.set_conversation_id(str(user_msg.id) if user_msg else None)
-        except ImportError:
-            pass
-
+        # 5. Run agent loop — yields tool_start / tool_end / chunk events
         # 6. Resolve agent config (None falls back to default system prompt)
         agent_cfg = None
         if agent_id is not None:
@@ -97,7 +89,7 @@ async def process_chat_message(
             except Exception as e:
                 logger.warning("Failed to load agent %s, using default: %s", agent_id, e)
 
-        # 7. Run agent loop — yields tool_start / tool_end / chunk events
+        # 6. Run agent loop — yields tool_start / tool_end / chunk events
         full_response = ""
         tool_inputs: Dict[str, Any] = {}   # tool_name → tool_input (paired with tool_end)
         completed_tools: list[Dict[str, Any]] = []
@@ -149,11 +141,3 @@ async def process_chat_message(
         if session_id_str:
             # Use cached string — session ORM object is expired after rollback
             yield {"type": "done", "session_id": session_id_str}
-    finally:
-        try:
-            import observe_me
-            observe_me.set_session_id(None)
-            observe_me.set_user_id(None)
-            observe_me.set_conversation_id(None)
-        except ImportError:
-            pass

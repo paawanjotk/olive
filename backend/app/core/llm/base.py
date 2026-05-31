@@ -29,12 +29,8 @@ Adding a new provider:
 from abc import ABC, abstractmethod
 from typing import AsyncIterator, List, Dict, Any
 
-try:
-    from observe_me import trace_llm
-except ImportError:
-    # observe-me not installed — define a no-op pass-through decorator
-    def trace_llm(fn):  # type: ignore[misc]
-        return fn
+def trace_llm(fn):
+    return fn
 
 
 class BaseLLMProvider(ABC):
@@ -98,8 +94,6 @@ class BaseLLMProvider(ABC):
         Traced public streaming interface.
 
         Do NOT override this in subclasses — implement _do_stream instead.
-        @trace_llm automatically instruments timing, tokens, errors, and
-        emits telemetry to the observe-me ingestion backend.
         """
         self._last_usage = None
         async for chunk in self._do_stream(messages, system):

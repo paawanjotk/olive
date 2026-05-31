@@ -18,10 +18,8 @@ services:
 
   backend:
     build:
-      context: ..          # repo root — gives Dockerfile access to sdk/
+      context: ..
       dockerfile: backend/Dockerfile
-      args:
-        SDK_PATH: sdk      # relative to repo root context
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -39,7 +37,6 @@ services:
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
-      OBSERVE_ME_ENDPOINT: ${OBSERVE_ME_ENDPOINT:-}
       RELOAD: "true"
     volumes:
       - ./app:/app/app
@@ -54,8 +51,6 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
-      args:
-        SDK_PATH: sdk
     restart: unless-stopped
     command: worker
     environment:
@@ -80,8 +75,6 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
-      args:
-        SDK_PATH: sdk
     restart: unless-stopped
     command: beat
     environment:

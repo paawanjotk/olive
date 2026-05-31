@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import time
 from contextlib import asynccontextmanager
 
@@ -19,25 +18,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-_observe_client = None
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _observe_client
     logger.info("Starting up Yuno Chat Backend...")
     await init_db()
     logger.info("Database initialized successfully")
-
-    observe_endpoint = os.environ.get("OBSERVE_ME_ENDPOINT", "")
-    if observe_endpoint:
-        try:
-            import observe_me
-            _observe_client = observe_me.configure(endpoint=observe_endpoint, enabled=True)
-            await _observe_client.start()
-            logger.info("observe-me SDK started → %s", observe_endpoint)
-        except ImportError:
-            logger.warning("observe_me SDK not installed — telemetry disabled")
 
     # Start Slack Socket Mode handler in the background if tokens are configured.
     # No separate process or terminal needed — it runs alongside the API.
@@ -62,8 +47,6 @@ async def lifespan(app: FastAPI):
             await slack_task
         except asyncio.CancelledError:
             pass
-    if _observe_client is not None:
-        await _observe_client.stop()
     await close_db()
     logger.info("Database connections closed")
 

@@ -22,8 +22,7 @@ from app.db.models.workflows import WorkflowStep
 logger = logging.getLogger(__name__)
 
 
-# Rough token/cost estimate. Exact accounting lives in the observe-me traces;
-# this gives the monitor a live, good-enough number per step.
+# Rough token/cost estimate per step.
 _PRICE_PER_1K = {  # (input, output) USD per 1k tokens
     "claude-sonnet-4-6": (0.003, 0.015),
     "gpt-4o-mini": (0.00015, 0.0006),

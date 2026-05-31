@@ -1,5 +1,5 @@
 """
-Agentic loop with tool calling and nested observe-me tracing.
+Agentic loop with tool calling.
 
 Trace tree produced per agent turn:
 
@@ -429,14 +429,8 @@ async def run_agent_turn(
     if user_id:
         set_tool_user_id(str(user_id))
 
-    # ── Observability setup ──────────────────────────────────────────────────
-    try:
-        import observe_me
-        from observe_me.context import _active_trace_id
-        obs = observe_me.get_client()
-    except ImportError:
-        obs = None
-        _active_trace_id = None
+    obs = None
+    _active_trace_id = None
 
     # Decide the active provider before creating the root trace so the admin
     # panel shows the model that will actually answer, not the one that failed.

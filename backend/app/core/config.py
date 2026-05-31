@@ -54,8 +54,6 @@ class Settings(BaseSettings):
     # Anthropic model config
     ANTHROPIC_MODEL: str = "claude-sonnet-4-6"
     ANTHROPIC_MAX_TOKENS: int = 8096
-    OBSERVE_ME_ENDPOINT: str = os.getenv("OBSERVE_ME_ENDPOINT", "")
-
     # Gemini model config
     GEMINI_MODEL: str = "gemini-2.5-flash"
     GEMINI_MAX_TOKENS: int = 8096
