@@ -11,6 +11,7 @@
         header_up X-Real-IP {remote_host}
 
         transport http {
+            versions 1.1
             response_header_timeout 600s
         }
     }

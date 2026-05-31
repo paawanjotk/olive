@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://yuno-ayaan.netlify.app/"
+        "https://yuno-ayaan.netlify.app"
     ]
 
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/ollive_chat"
