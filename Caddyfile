@@ -6,19 +6,12 @@
 
 139-59-10-53.sslip.io {
     reverse_proxy backend:8000 {
-        # WebSocket upgrade — allows wss:// connections from the frontend
         header_up Connection {>Connection}
         header_up Upgrade {>Upgrade}
-
-        # Pass real client IP to FastAPI
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
 
-        # Long timeout for streaming / LLM responses
         transport http {
             response_header_timeout 600s
-            read_buffer_size 4KB
         }
     }
 }
