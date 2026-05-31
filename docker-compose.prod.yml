@@ -41,7 +41,9 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/ayaankhan28/ollive-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file: .env
     depends_on:
@@ -51,7 +53,9 @@ services:
         condition: service_healthy
 
   worker:
-    image: ghcr.io/ayaankhan28/ollive-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: worker
     env_file: .env
@@ -62,7 +66,9 @@ services:
         condition: service_healthy
 
   beat:
-    image: ghcr.io/ayaankhan28/ollive-backend:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: beat
     env_file: .env

@@ -39,7 +39,7 @@ services:
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
-      OBSERVE_ME_ENDPOINT: ${OBSERVE_ME_ENDPOINT:-http://ingestion:8001}
+      OBSERVE_ME_ENDPOINT: ${OBSERVE_ME_ENDPOINT:-}
       RELOAD: "true"
     volumes:
       - ./app:/app/app
@@ -49,8 +49,6 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ingestion:
-        condition: service_started
 
   worker:
     build:
@@ -108,24 +106,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  ingestion:
-    build:
-      context: ..          # repo root
-      dockerfile: ingestion_backend/Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8001:8001"
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ollive_chat
-      REDIS_URL: redis://redis:6379/0
-    volumes:
-      - ../ingestion_backend/app:/app/app
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
 
 volumes:
