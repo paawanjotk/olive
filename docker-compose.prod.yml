@@ -16,6 +16,7 @@ services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
+    command: postgres -p 5433
     environment:
       POSTGRES_DB: ollive_chat
       POSTGRES_USER: postgres
@@ -23,7 +24,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ollive_chat"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ollive_chat -p 5433"]
       interval: 5s
       timeout: 5s
       retries: 10
