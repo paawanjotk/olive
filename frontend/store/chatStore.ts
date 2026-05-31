@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { User, Session, Message, ToolCall } from '@/lib/types'
 
+
 interface ChatStore {
   // User state
   user: User | null
