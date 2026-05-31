@@ -4,7 +4,7 @@ import type { User, Session, Message, ToolCall } from '@/lib/types'
 interface ChatStore {
   // User state
   user: User | null
-  setUser: (user: User) => void
+  setUser: (user: User | null) => void
 
   // Sessions
   sessions: Session[]

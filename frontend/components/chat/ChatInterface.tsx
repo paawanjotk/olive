@@ -7,8 +7,11 @@ import { useAuth } from '@/contexts/AuthContext'
 import ChatSidebar from './ChatSidebar'
 import ChatMain from './ChatMain'
 import AgentsPanel from '@/components/agents/AgentsPanel'
+import WorkflowsPanel from '@/components/workflows/WorkflowsPanel'
+import MonitoringPanel from '@/components/monitoring/MonitoringPanel'
+import SettingsPanel from '@/components/settings/SettingsPanel'
 
-type AppView = 'chat' | 'agents'
+type AppView = 'chat' | 'agents' | 'workflows' | 'monitoring' | 'settings'
 
 export default function ChatInterface() {
   const { session, loading, signOut } = useAuth()
@@ -38,8 +41,14 @@ export default function ChatInterface() {
         onSignOut={signOut}
       />
 
-      {activeView === 'agents' ? (
+      {activeView === 'settings' ? (
+        <SettingsPanel />
+      ) : activeView === 'monitoring' ? (
+        <MonitoringPanel />
+      ) : activeView === 'agents' ? (
         <AgentsPanel />
+      ) : activeView === 'workflows' ? (
+        <WorkflowsPanel />
       ) : (
         <ChatMain
           sessions={chat.sessions}

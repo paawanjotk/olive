@@ -20,6 +20,8 @@ class AgentBase(BaseModel):
     max_iterations: int = 5
     tools: list[str] = []
     soul_md: Optional[str] = None
+    memory_md: Optional[str] = None
+    guardrails: dict[str, Any] = {}
     # Flexible display metadata — avatar_emoji, avatar_color, tags, etc.
     # Clients can send any JSON-serialisable keys; unknown keys are stored as-is.
     meta: dict[str, Any] = {}
@@ -77,6 +79,8 @@ class AgentUpdate(BaseModel):
     max_iterations: Optional[int] = None
     tools: Optional[list[str]] = None
     soul_md: Optional[str] = None
+    memory_md: Optional[str] = None
+    guardrails: Optional[dict[str, Any]] = None
     meta: Optional[dict[str, Any]] = None
 
     @field_validator("provider")

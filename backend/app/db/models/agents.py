@@ -34,6 +34,13 @@ class Agent(Base):
     # JSON array of tool names e.g. ["web_search", "calculator"]
     tools: Mapped[list] = mapped_column(sa.JSON, nullable=False, server_default="[]")
     soul_md: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # openclaw-style persistent memory: the agent's MEMORY.md, loaded at the
+    # start of every run and appended to as it learns durable facts.
+    memory_md: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Guardrails: caps + approval policy. Kept as JSON so new guardrail types
+    # (rate limits, blocked tools, content filters) never need a migration.
+    # Shape: {"require_approval": bool, "max_cost_usd": float|None, ...}
+    guardrails: Mapped[dict] = mapped_column(sa.JSON, nullable=False, server_default=sa.text("'{}'"))
     # Flexible display/UI metadata: avatar_emoji, avatar_color, tags, etc.
     # Kept out of typed columns so adding new display props never needs a migration.
     meta: Mapped[dict] = mapped_column(sa.JSON, nullable=False, server_default="{}")

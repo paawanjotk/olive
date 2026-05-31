@@ -41,10 +41,10 @@ export default function AgentCard({
 
   if (compact) {
     return (
-      <button
+      <div
         onClick={onClick}
         className={cn(
-          'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left',
+          'group w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-left cursor-pointer',
           isSelected
             ? 'bg-white/[0.08] text-white'
             : 'text-[#b4b4b4] hover:bg-white/[0.05] hover:text-white'
@@ -55,7 +55,16 @@ export default function AgentCard({
           <p className="text-sm font-medium truncate">{agent.name}</p>
           <p className="text-xs text-white/30 truncate capitalize">{agent.role}</p>
         </div>
-      </button>
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete() }}
+            className="p-1 rounded text-white/25 hover:text-red-400 hover:bg-white/[0.08] opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+            title="Delete agent"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
+      </div>
     )
   }
 

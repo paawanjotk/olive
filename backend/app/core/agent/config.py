@@ -24,26 +24,30 @@ class AgentConfig:
     max_iterations: int = 5
     tools: list[str] = field(default_factory=list)
     soul_md: Optional[str] = None
+    memory_md: Optional[str] = None
     name: Optional[str] = None
 
     @property
     def effective_system_prompt(self) -> str:
-        """Merges name header + system_prompt + soul_md into the final prompt sent to the LLM."""
+        """Merges name header + system_prompt + soul_md + memory_md into the final prompt."""
         parts = []
         if self.name:
             parts.append(f"Your name is {self.name}.")
         parts.append(self.system_prompt)
         if self.soul_md and self.soul_md.strip():
             parts.append(f"---\n\n{self.soul_md}")
+        if self.memory_md and self.memory_md.strip():
+            parts.append(f"---\n\n# Your memory (durable facts you've saved)\n\n{self.memory_md}")
         return "\n\n".join(parts)
 
     @classmethod
     def default(cls) -> "AgentConfig":
-        """Fallback config used when no agent_id is provided — preserves existing behaviour."""
+        """Fallback config used when no agent_id is provided — preserves existing behaviour.
+        The default chat agent gets all tools including workflow orchestration tools."""
         from app.core.llm.manager import SYSTEM_PROMPT
         return cls(
             system_prompt=SYSTEM_PROMPT,
-            tools=AVAILABLE_TOOLS,
+            tools=AVAILABLE_TOOLS + ["list_workflows", "run_workflow", "get_workflow_status"],
         )
 
     @classmethod
@@ -59,4 +63,5 @@ class AgentConfig:
             max_iterations=agent.max_iterations,
             tools=agent.tools or [],
             soul_md=agent.soul_md,
+            memory_md=getattr(agent, "memory_md", None),
         )

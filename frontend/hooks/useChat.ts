@@ -212,6 +212,7 @@ export function useChat() {
       id: supabaseUser.id,
       name: supabaseUser.user_metadata?.name || supabaseUser.email?.split('@')[0] || 'User',
       email: supabaseUser.email || '',
+      created_at: supabaseUser.created_at ?? '',
     }
     store.setUser(storeUser)
     loadSessions(supabaseUser.id)

@@ -3,10 +3,10 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   SquarePen,
-  Search,
   Bot,
-  Code2,
-  MoreHorizontal,
+  Workflow,
+  Activity,
+  Settings,
   PanelLeft,
   Trash2,
   Check,
@@ -17,19 +17,19 @@ import {
 import { cn, truncate } from '@/lib/utils'
 import type { Session, User } from '@/lib/types'
 
-type AppView = 'chat' | 'agents'
+type AppView = 'chat' | 'agents' | 'workflows' | 'monitoring' | 'settings'
 
 interface ChatSidebarProps {
   user: User | null
   sessions: Session[]
   activeSessionId: string | null
   isLoadingSessions: boolean
-  activeView: AppView
+  activeView: 'chat' | 'agents' | 'workflows' | 'monitoring' | 'settings'
   selectSession: (id: string) => void
   startNewChat: () => void
   deleteSession: (id: string) => void
   renameSession: (id: string, title: string) => void
-  onViewChange: (view: AppView) => void
+  onViewChange: (view: 'chat' | 'agents' | 'workflows' | 'monitoring' | 'settings') => void
   onSignOut: () => void
 }
 
@@ -163,10 +163,10 @@ function SessionItem({ session, isActive, onSelect, onDelete, onRename }: Sessio
 }
 
 const NAV_ITEMS = [
-  { icon: Search, label: 'Search chats', view: null },
-  { icon: Bot,    label: 'Agents',       view: 'agents' as const },
-  { icon: Code2,  label: 'Codex',        view: null },
-  { icon: MoreHorizontal, label: 'More', view: null },
+  { icon: Bot,      label: 'Agents',     view: 'agents'     as const },
+  { icon: Workflow, label: 'Workflows',  view: 'workflows'  as const },
+  { icon: Activity, label: 'Monitoring', view: 'monitoring' as const },
+  { icon: Settings, label: 'Settings',   view: 'settings'   as const },
 ]
 
 export default function ChatSidebar({

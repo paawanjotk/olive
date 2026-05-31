@@ -11,6 +11,8 @@ export interface Agent {
   max_iterations: number
   tools: string[]
   soul_md: string | null
+  memory_md: string | null
+  guardrails: Record<string, unknown>
   // Flexible display metadata: avatar_emoji, avatar_color, tags, etc.
   meta: Record<string, unknown>
   is_active: boolean
@@ -30,6 +32,8 @@ export interface AgentCreate {
   max_iterations?: number
   tools?: string[]
   soul_md?: string | null
+  memory_md?: string | null
+  guardrails?: Record<string, unknown>
   meta?: Record<string, unknown>
 }
 
@@ -66,6 +70,125 @@ export interface ToolCall {
   status: 'running' | 'done'
   started_at: string
   completed_at?: string
+}
+
+// ── Workflows ──────────────────────────────────────────────────────────────
+
+export type WorkflowNodeType = 'trigger' | 'agent' | 'supervisor' | 'checkpoint' | 'end'
+
+export interface WorkflowNode {
+  id: string
+  type: WorkflowNodeType
+  position: { x: number; y: number }
+  data: {
+    label: string
+    description?: string
+    agentId?: string
+    [k: string]: unknown
+  }
+}
+
+export interface WorkflowEdge {
+  id: string
+  source: string
+  target: string
+  [k: string]: unknown
+}
+
+export interface GraphJson {
+  nodes: WorkflowNode[]
+  edges: WorkflowEdge[]
+  channel_config?: Record<string, any>
+}
+
+export interface Workflow {
+  id: string
+  user_id: string
+  name: string
+  description: string
+  graph_json: GraphJson
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface WorkflowCreate {
+  name: string
+  description?: string
+  graph_json: GraphJson
+}
+
+export interface WorkflowTemplate {
+  key: string
+  name: string
+  description: string
+  agent_count: number
+  preview_graph: GraphJson
+}
+
+export type ExecutionStatus =
+  | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface WorkflowExecution {
+  id: string
+  workflow_id: string
+  user_id: string
+  status: ExecutionStatus
+  trigger_type: string
+  trigger_context: Record<string, unknown>
+  input_data: Record<string, unknown>
+  output_data: { output?: string; node_outputs?: Record<string, string> } | null
+  error_message: string | null
+  celery_task_id: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface WorkflowStep {
+  id: string
+  execution_id: string
+  node_id: string
+  agent_id: string | null
+  status: string
+  input: Record<string, unknown>
+  output: { text?: string; decision?: Record<string, unknown>; usage?: Record<string, number> } | null
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+// Live SSE event shapes published by the worker during a run.
+export type ExecutionEvent =
+  | { type: 'stream_open' }
+  | { type: 'execution_started'; execution_id: string; workflow_id: string; name: string; ts: string }
+  | { type: 'node_started'; execution_id: string; node_id: string; label: string; role: string; ts: string }
+  | { type: 'chunk'; execution_id: string; node_id: string; content: string; ts: string }
+  | { type: 'tool_start'; execution_id: string; node_id: string; tool_name: string; tool_input: unknown; ts: string }
+  | { type: 'tool_end'; execution_id: string; node_id: string; tool_name: string; tool_result: string; ts: string }
+  | { type: 'supervisor_decision'; execution_id: string; node_id: string; next: string; reason: string; ts: string }
+  | { type: 'node_completed'; execution_id: string; node_id: string; output: string; usage?: Record<string, number>; ts: string }
+  | { type: 'node_failed'; execution_id: string; node_id: string; error: string; ts: string }
+  | { type: 'approval_requested'; execution_id: string; node_id: string; preview: string; ts: string }
+  | { type: 'output_sent'; execution_id: string; platform: string; chat_id: string; ts: string }
+  | { type: 'execution_completed'; execution_id: string; output: string; ts: string }
+  | { type: 'execution_failed'; execution_id: string; error: string; ts: string }
+
+export interface ExecutionWithWorkflow extends WorkflowExecution {
+  workflow_name: string
+}
+
+export interface ChannelBinding {
+  id: string
+  user_id: string
+  platform: string
+  external_id: string
+  workflow_id: string | null
+  agent_id: string | null
+  config: Record<string, unknown>
+  is_active: boolean
+  created_at: string
 }
 
 export type WSMessageType =

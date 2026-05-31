@@ -16,7 +16,8 @@ RUN pip install --no-cache-dir /sdk
 # ── Backend deps ───────────────────────────────────────────────────────────────
 COPY backend/pyproject.toml backend/poetry.lock* ./
 RUN poetry lock --no-interaction --no-ansi \
- && poetry install --only main --no-interaction --no-ansi --no-root
+ && poetry install --with dev --no-interaction --no-ansi --no-root \
+ && pip install --no-cache-dir slack-bolt "aiohttp==3.9.5"
 
 COPY backend/. .
 

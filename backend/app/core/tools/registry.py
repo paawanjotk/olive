@@ -6,6 +6,7 @@ from typing import Any
 from .calculator import calculate
 from .datetime_tool import get_datetime
 from .web_search import web_search
+from .workflow_tools import tool_list_workflows, tool_run_workflow, tool_get_workflow_status
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,39 @@ ANTHROPIC_TOOL_DEFS = [
             },
         },
     },
+    {
+        "name": "list_workflows",
+        "description": "List the user's available workflows. Use this before running a workflow to find the correct workflow_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "Max workflows to return (default 10)", "default": 10}
+            },
+        },
+    },
+    {
+        "name": "run_workflow",
+        "description": "Trigger a workflow to run asynchronously. Returns an execution_id. Use list_workflows first to find the workflow_id.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string", "description": "The workflow UUID to run"},
+                "input_text": {"type": "string", "description": "The input/task description to pass to the workflow"},
+            },
+            "required": ["workflow_id"],
+        },
+    },
+    {
+        "name": "get_workflow_status",
+        "description": "Check the status and output of a running or completed workflow execution.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "execution_id": {"type": "string", "description": "The execution UUID from run_workflow"},
+            },
+            "required": ["execution_id"],
+        },
+    },
 ]
 
 # ── Sync-to-async adapter for calculator and datetime ────────────────────────
@@ -99,6 +133,9 @@ TOOL_REGISTRY: dict[str, Any] = {
     "web_search": _run_web_search,
     "calculator": _run_calculator,
     "get_datetime": _run_datetime,
+    "list_workflows": tool_list_workflows,
+    "run_workflow": tool_run_workflow,
+    "get_workflow_status": tool_get_workflow_status,
 }
 
 
@@ -129,3 +166,11 @@ async def execute_tool(name: str, tool_input: dict) -> str:
     if fn is None:
         raise ValueError(f"Unknown tool: {name}")
     return await fn(**tool_input)
+
+
+from .workflow_tools import set_tool_user_id  # noqa: E402 — re-exported for callers
+
+__all__ = [
+    "TOOL_REGISTRY", "ANTHROPIC_TOOL_DEFS", "GEMINI_TOOL_DEFS",
+    "execute_tool", "set_tool_user_id",
+]

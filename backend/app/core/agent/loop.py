@@ -319,6 +319,11 @@ async def run_agent_turn(
     from app.core.agent.config import AgentConfig as _AgentConfig
     config = agent_config if agent_config is not None else _AgentConfig.default()
 
+    # Inject user context for workflow tools
+    from app.core.tools.registry import set_tool_user_id
+    if user_id:
+        set_tool_user_id(str(user_id))
+
     # ── Observability setup ──────────────────────────────────────────────────
     try:
         import observe_me
