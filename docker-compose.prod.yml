@@ -1,13 +1,3 @@
-# Production deployment — uses pre-built images from GHCR, no build step on the server.
-#
-# Required in .env on the server:
-#   BACKEND_IMAGE=ghcr.io/<your-github-user>/ollive-backend
-#   POSTGRES_PASSWORD=<strong-password>
-#   ANTHROPIC_API_KEY, SUPABASE_URL, etc. (see backend/.env.example)
-#
-# First deploy: docker compose -f docker-compose.prod.yml up -d
-# Subsequent:   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --remove-orphans
-
 services:
   caddy:
     image: caddy:2-alpine
@@ -29,7 +19,7 @@ services:
     environment:
       POSTGRES_DB: ollive_chat
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -51,12 +41,9 @@ services:
       retries: 10
 
   backend:
-    image: ${BACKEND_IMAGE:?set BACKEND_IMAGE in .env}:latest
+    image: ghcr.io/ayaankhan28/ollive-backend:latest
     restart: unless-stopped
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/ollive_chat
-      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
@@ -64,13 +51,10 @@ services:
         condition: service_healthy
 
   worker:
-    image: ${BACKEND_IMAGE}:latest
+    image: ghcr.io/ayaankhan28/ollive-backend:latest
     restart: unless-stopped
     command: worker
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/ollive_chat
-      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
@@ -78,13 +62,10 @@ services:
         condition: service_healthy
 
   beat:
-    image: ${BACKEND_IMAGE}:latest
+    image: ghcr.io/ayaankhan28/ollive-backend:latest
     restart: unless-stopped
     command: beat
     env_file: .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@db:5432/ollive_chat
-      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy

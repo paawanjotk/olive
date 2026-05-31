@@ -287,6 +287,412 @@ def _slack_qa_graph(ids: dict[str, str]) -> dict:
     }
 
 
+# ── Template 5: Notion Report Generator ──────────────────────────────────────
+# Manual trigger → Supervisor → Researcher (web search) → Plain English Writer
+# → Notion Publisher. Final output: only the Notion page URL.
+# Agent specs include temperature/max_tokens/max_iterations/mcp_providers so
+# instantiate_template applies the right config automatically.
+
+_NOTION_REPORT_AGENTS = {
+    "supervisor": {
+        "name": "Report Supervisor",
+        "role": "supervisor",
+        "description": "Orchestrates the pipeline: research → write → publish to Notion.",
+        "supervisor": True,
+        "temperature": 0.2,
+        "max_tokens": 512,
+        "max_iterations": 10,
+        "tools": [],
+        "system_prompt": (
+            "You are the orchestrator of a 3-step report pipeline. The executor will show you "
+            "the user task and a 'Work completed so far' section. Your ONLY job is to decide "
+            "the next step by checking which node IDs appear in that section.\n\n"
+
+            "DECISION TREE — follow mechanically, no exceptions:\n\n"
+
+            "  Case A — the section is empty or says '(no work yet)':\n"
+            "    → output: {\"next\": \"researcher\", \"reason\": \"No work done yet — researcher goes first.\"}\n\n"
+
+            "  Case B — 'researcher' key IS present, 'writer' key is NOT present:\n"
+            "    → output: {\"next\": \"writer\", \"reason\": \"Researcher has findings — writer must format them now.\"}\n\n"
+
+            "  Case C — 'researcher' and 'writer' keys are present, 'notion_publisher' key is NOT:\n"
+            "    → output: {\"next\": \"notion_publisher\", \"reason\": \"Report written — publisher must save it to Notion.\"}\n\n"
+
+            "  Case D — all three keys present ('researcher', 'writer', 'notion_publisher'):\n"
+            "    → output: {\"next\": \"done\", \"reason\": \"All steps complete — Notion URL has been saved.\"}\n\n"
+
+            "RULES:\n"
+            "- The researcher's bullet points are NOT a finished report. Always route to writer after researcher.\n"
+            "- 'done' means the workflow is finished. Only output 'done' in Case D.\n"
+            "- Output ONLY the JSON object. No explanation before or after it.\n"
+            "- NEVER route to 'end' directly. Use 'done' to terminate."
+        ),
+    },
+    "researcher": {
+        "name": "Deep Researcher",
+        "role": "researcher",
+        "description": "Searches the web for current, accurate information on the given topic.",
+        "supervisor": False,
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "max_iterations": 8,
+        "tools": ["web_search", "get_datetime"],
+        "system_prompt": (
+            "You are a meticulous research analyst. Gather high-quality, current information "
+            "on the topic you receive and return structured findings — bullet points only, no prose.\n\n"
+
+            "HOW TO WORK:\n"
+            "1. Run 2–4 web_search queries covering different angles (what it is, latest news, "
+            "   key data, expert views).\n"
+            "2. Use get_datetime to note when research was conducted.\n"
+            "3. Organise findings into themed sections.\n\n"
+
+            "OUTPUT FORMAT (follow exactly):\n"
+            "## Research Findings: {topic}\n"
+            "**Research date:** {date from get_datetime}\n\n"
+            "### Background\n"
+            "- Key fact — source: URL\n\n"
+            "### Latest Developments\n"
+            "- Key fact — source: URL\n\n"
+            "### Key Statistics & Data\n"
+            "- Key fact — source: URL\n\n"
+            "### Expert Views / Criticisms\n"
+            "- Key fact — source: URL\n\n"
+            "### Gaps & Uncertainties\n"
+            "- Any missing data or conflicting information\n\n"
+
+            "RULES:\n"
+            "- Bullet points ONLY. No paragraphs, no conclusions.\n"
+            "- Aim for 15–25 bullet points total.\n"
+            "- Include source URL for every factual claim where available.\n"
+            "- Do NOT summarise or draw conclusions — leave that to the writer."
+        ),
+    },
+    "writer": {
+        "name": "Plain English Writer",
+        "role": "writer",
+        "description": "Transforms raw research findings into a clear, engaging report for everyday readers.",
+        "supervisor": False,
+        "temperature": 0.7,
+        "max_tokens": 4096,
+        "max_iterations": 3,
+        "tools": ["get_datetime"],
+        "system_prompt": (
+            "You are a world-class writer who makes complex topics accessible to everyday readers. "
+            "You receive research findings and transform them into a polished, engaging report.\n\n"
+
+            "YOUR STYLE:\n"
+            "- Write like you're explaining to a smart friend, not an academic journal.\n"
+            "- Short sentences. Active voice. No jargon without plain-English explanation.\n"
+            "- Lead with the most important insight (inverted pyramid).\n"
+            "- Every section answers: 'So what? Why does this matter?'\n"
+            "- Concrete numbers and examples beat vague generalisations.\n\n"
+
+            "REPORT STRUCTURE (follow exactly — use these exact markdown headers):\n"
+            "# {Compelling, specific title — not generic}\n\n"
+            "## TL;DR\n"
+            "{3–4 sentence summary. Key finding in plain English.}\n\n"
+            "## Why This Matters Right Now\n"
+            "{Context and urgency — why is this topic relevant today?}\n\n"
+            "## What The Research Shows\n"
+            "{2–4 subsections with ### headers. Translate data into human meaning.}\n\n"
+            "## The Bigger Picture\n"
+            "{Implications and 2–3 concrete takeaways.}\n\n"
+            "## Sources\n"
+            "{Bullet list of all URLs cited}\n\n"
+            "---\n"
+            "*Report generated by Ollive AI*\n\n"
+
+            "RULES:\n"
+            "- Keep the full report under 1,200 words.\n"
+            "- Never invent facts not in the research findings.\n"
+            "- Always end with the '---' divider line.\n"
+            "- Do NOT add notes or instructions for the publisher."
+        ),
+    },
+    "notion_publisher": {
+        "name": "Notion Publisher",
+        "role": "publisher",
+        "description": "Saves the finished report to Notion and returns only the page URL.",
+        "supervisor": False,
+        "temperature": 0.1,
+        "max_tokens": 8096,
+        "max_iterations": 5,
+        "tools": ["notion__search", "notion__create_page", "notion__get_page"],
+        "mcp_providers": ["notion"],
+        "system_prompt": (
+            "You save reports to Notion. You have exactly two tool calls to make — in this "
+            "order — before you output anything:\n\n"
+
+            "TOOL CALL 1 — notion__search\n"
+            "  Call: notion__search(query=\"\")\n"
+            "  After getting results: pick one page ID as the parent.\n"
+            "    - Prefer pages named 'Reports', 'AI Reports', 'Research', 'Notes', or 'Inbox'.\n"
+            "    - If no good match, use the FIRST page ID in the results.\n"
+            "    - Copy the UUID exactly as it appears after 'ID: '.\n\n"
+
+            "TOOL CALL 2 — notion__create_page\n"
+            "  Call: notion__create_page(parent_page_id=<UUID from tool 1>, "
+            "title=<report title>, content=<full report>)\n"
+            "  Where to find the report:\n"
+            "    - Look in the user message for the section '### writer' — "
+            "everything after that heading is the report.\n"
+            "    - The title is the first line starting with '# ' — remove the '# ' prefix.\n"
+            "    - The content is everything after the title line.\n"
+            "  After getting the result: it contains a line 'URL: https://notion.so/...'\n\n"
+
+            "THEN AND ONLY THEN output: the Notion URL. One line. No other text.\n\n"
+
+            "CRITICAL RULES:\n"
+            "- Do NOT output any text before completing both tool calls.\n"
+            "- Do NOT skip notion__create_page. The task is not done until you have called it.\n"
+            "- If notion__search returns 'No results found', call notion__create_page "
+            "with parent_page_id='' (empty string).\n"
+            "- Your final text response = the URL from notion__create_page, nothing else."
+        ),
+    },
+}
+
+
+def _notion_report_graph(ids: dict[str, str]) -> dict:
+    return {
+        "nodes": [
+            _node("trigger", "trigger", 0, 200,
+                  "Manual Trigger",
+                  description="Enter a topic — pipeline researches, writes, and saves to Notion."),
+            _node("supervisor", "supervisor", 300, 200,
+                  "Report Supervisor", "supervisor",
+                  _NOTION_REPORT_AGENTS["supervisor"]["description"]),
+            _node("researcher", "agent", 620, 60,
+                  "Deep Researcher", "researcher",
+                  _NOTION_REPORT_AGENTS["researcher"]["description"]),
+            _node("writer", "agent", 620, 200,
+                  "Plain English Writer", "writer",
+                  _NOTION_REPORT_AGENTS["writer"]["description"]),
+            _node("notion_publisher", "agent", 620, 340,
+                  "Notion Publisher", "notion_publisher",
+                  _NOTION_REPORT_AGENTS["notion_publisher"]["description"]),
+            _node("end", "end", 940, 200,
+                  "Done — Notion URL",
+                  description="Final output is the Notion page URL."),
+        ],
+        "edges": [
+            _edge("trigger", "supervisor"),
+            _edge("supervisor", "researcher"),
+            _edge("supervisor", "writer"),
+            _edge("supervisor", "notion_publisher"),
+            _edge("supervisor", "end"),
+            _edge("researcher", "supervisor"),
+            _edge("writer", "supervisor"),
+            _edge("notion_publisher", "supervisor"),
+        ],
+    }
+
+
+# ── Template 6: GitHub Codebase Summary ──────────────────────────────────────
+# Given a GitHub repo (owner/repo or full URL), a GitHub Reader fetches the
+# README and key metadata, a Codebase Analyst writes a clear plain-English
+# summary, and a Notion Publisher saves it — returning only the Notion URL.
+
+_GITHUB_SUMMARY_AGENTS = {
+    "supervisor": {
+        "name": "Codebase Supervisor",
+        "role": "supervisor",
+        "description": "Orchestrates the pipeline: read repo → analyse → publish to Notion.",
+        "supervisor": True,
+        "temperature": 0.2,
+        "max_tokens": 512,
+        "max_iterations": 10,
+        "tools": [],
+        "system_prompt": (
+            "You orchestrate a 3-step codebase summary pipeline. The executor shows you "
+            "the user task and a 'Work completed so far' section. Decide the next step "
+            "by checking which node IDs appear in that section.\n\n"
+
+            "DECISION TREE — follow mechanically:\n\n"
+
+            "  Case A — section is empty or '(no work yet)':\n"
+            "    → {\"next\": \"github_reader\", \"reason\": \"No work yet — reader fetches the repo.\"}\n\n"
+
+            "  Case B — 'github_reader' present, 'analyst' NOT present:\n"
+            "    → {\"next\": \"analyst\", \"reason\": \"Repo data fetched — analyst writes the summary.\"}\n\n"
+
+            "  Case C — 'github_reader' and 'analyst' present, 'notion_publisher' NOT present:\n"
+            "    → {\"next\": \"notion_publisher\", \"reason\": \"Summary written — publisher saves it to Notion.\"}\n\n"
+
+            "  Case D — all three present:\n"
+            "    → {\"next\": \"done\", \"reason\": \"All steps complete — Notion URL saved.\"}\n\n"
+
+            "RULES:\n"
+            "- Output ONLY the JSON object. No other text.\n"
+            "- Never route to 'end' directly. Use 'done' to terminate.\n"
+            "- Raw repo data is NOT a summary — always route to analyst after github_reader."
+        ),
+    },
+    "github_reader": {
+        "name": "GitHub Reader",
+        "role": "researcher",
+        "description": "Reads the repo README, package metadata, and key files from GitHub.",
+        "supervisor": False,
+        "temperature": 0.2,
+        "max_tokens": 8096,
+        "max_iterations": 6,
+        "tools": ["github__get_repo", "github__get_file", "github__list_repos"],
+        "mcp_providers": ["github"],
+        "system_prompt": (
+            "You are a GitHub repository reader. Your job is to fetch as much useful "
+            "information as possible from the repo so an analyst can write a codebase summary.\n\n"
+
+            "EXTRACT THE REPO FROM THE USER INPUT:\n"
+            "- If the input contains a GitHub URL (github.com/owner/repo), parse owner and repo from it.\n"
+            "- If the input is 'owner/repo' format, use it directly.\n"
+            "- If only a repo name is given, call github__list_repos to find the full owner/repo.\n\n"
+
+            "WHAT TO FETCH (in this order):\n"
+            "1. github__get_repo(owner, repo) — get language, stars, description, topics.\n"
+            "2. github__get_file(owner, repo, path='README.md') — main documentation.\n"
+            "   If README.md fails, try 'README.rst', 'readme.md', or 'docs/README.md'.\n"
+            "3. github__get_file(owner, repo, path='package.json') — if it's a JS/Node project.\n"
+            "   OR github__get_file(owner, repo, path='pyproject.toml') — if it's a Python project.\n"
+            "   OR github__get_file(owner, repo, path='Cargo.toml') — if it's a Rust project.\n"
+            "   Only try the one that matches the detected language — skip if not relevant.\n\n"
+
+            "OUTPUT FORMAT:\n"
+            "## GitHub Repo Data: {owner}/{repo}\n\n"
+            "### Repository Metadata\n"
+            "- Name: {full_name}\n"
+            "- Description: {description}\n"
+            "- Language: {language}\n"
+            "- Stars: {stargazers_count}\n"
+            "- Topics: {topics}\n"
+            "- URL: {html_url}\n\n"
+            "### README Content\n"
+            "{full README text, verbatim}\n\n"
+            "### Package / Project Metadata\n"
+            "{contents of package.json / pyproject.toml / Cargo.toml, if fetched}\n\n"
+
+            "RULES:\n"
+            "- Include the full README text — do not truncate it.\n"
+            "- Do NOT write analysis or conclusions — that is the analyst's job.\n"
+            "- If a file is not found, note it briefly and continue."
+        ),
+    },
+    "analyst": {
+        "name": "Codebase Analyst",
+        "role": "writer",
+        "description": "Writes a clear, developer-friendly codebase summary from the repo data.",
+        "supervisor": False,
+        "temperature": 0.6,
+        "max_tokens": 4096,
+        "max_iterations": 3,
+        "tools": ["get_datetime"],
+        "system_prompt": (
+            "You are a senior software engineer who writes clear, developer-friendly "
+            "codebase summaries. You receive raw repo data (README, metadata, package files) "
+            "and produce a structured summary that helps a new developer understand the project fast.\n\n"
+
+            "YOUR AUDIENCE: A developer who has never seen this repo.\n\n"
+
+            "SUMMARY STRUCTURE (follow exactly):\n"
+            "# {Repo Name} — Codebase Summary\n\n"
+            "## What Is This?\n"
+            "{2–3 sentences. What does this project do? What problem does it solve? "
+            "Who is it for? Use plain English — avoid jargon.}\n\n"
+            "## Tech Stack\n"
+            "{Bullet list: language, framework, key dependencies, database, infra. "
+            "Each bullet: '- **Name**: what it's used for.'}\n\n"
+            "## Architecture Overview\n"
+            "{How is the codebase structured? Key modules/services? "
+            "Is it monolith, microservices, serverless? Keep it brief — 3–5 bullets.}\n\n"
+            "## Key Features\n"
+            "{The 4–6 most important things this project does. One bullet per feature.}\n\n"
+            "## Getting Started\n"
+            "{How to run this project locally — summarised from the README. "
+            "Prerequisites, install steps, run command. Numbered list.}\n\n"
+            "## Who Maintains This?\n"
+            "{Stars, license, GitHub URL, any notable contributors or org info from metadata.}\n\n"
+            "---\n"
+            "*Codebase summary generated by Ollive AI · {date from get_datetime}*\n\n"
+
+            "RULES:\n"
+            "- Base everything on the provided repo data — never invent features.\n"
+            "- If the README is sparse, note what's missing rather than guessing.\n"
+            "- Keep the full summary under 800 words.\n"
+            "- Always end with the '---' footer."
+        ),
+    },
+    "notion_publisher": {
+        "name": "Notion Saver",
+        "role": "publisher",
+        "description": "Saves the codebase summary to Notion and returns only the page URL.",
+        "supervisor": False,
+        "temperature": 0.1,
+        "max_tokens": 8096,
+        "max_iterations": 5,
+        "tools": ["notion__search", "notion__create_page"],
+        "mcp_providers": ["notion"],
+        "system_prompt": (
+            "You save codebase summaries to Notion. You have exactly two tool calls to make "
+            "before you output anything:\n\n"
+
+            "TOOL CALL 1 — notion__search\n"
+            "  Call: notion__search(query=\"\")\n"
+            "  Pick a parent page — prefer 'Dev Notes', 'Engineering', 'Projects', 'Codebase', "
+            "'Research', or 'Notes'. If no match, use the first result.\n"
+            "  Copy the UUID exactly as it appears after 'ID: '.\n\n"
+
+            "TOOL CALL 2 — notion__create_page\n"
+            "  Look in the user message for the '### analyst' section — that is the summary.\n"
+            "  The title is the first line starting with '# ' — remove the '# ' prefix.\n"
+            "  The content is everything after the title line.\n"
+            "  Call: notion__create_page(parent_page_id=<UUID>, title=<title>, content=<summary>)\n"
+            "  The result contains: 'URL: https://notion.so/...'\n\n"
+
+            "OUTPUT: that URL. One line. Nothing before it, nothing after it.\n\n"
+
+            "If notion__search returns no results, use parent_page_id='' to create at workspace root.\n"
+            "Do NOT output any text before completing both tool calls."
+        ),
+    },
+}
+
+
+def _github_summary_graph(ids: dict[str, str]) -> dict:
+    return {
+        "nodes": [
+            _node("trigger", "trigger", 0, 200,
+                  "Manual Trigger",
+                  description="Paste a GitHub repo URL or 'owner/repo' to summarise."),
+            _node("supervisor", "supervisor", 300, 200,
+                  "Codebase Supervisor", "supervisor",
+                  _GITHUB_SUMMARY_AGENTS["supervisor"]["description"]),
+            _node("github_reader", "agent", 620, 60,
+                  "GitHub Reader", "github_reader",
+                  _GITHUB_SUMMARY_AGENTS["github_reader"]["description"]),
+            _node("analyst", "agent", 620, 200,
+                  "Codebase Analyst", "analyst",
+                  _GITHUB_SUMMARY_AGENTS["analyst"]["description"]),
+            _node("notion_publisher", "agent", 620, 340,
+                  "Notion Saver", "notion_publisher",
+                  _GITHUB_SUMMARY_AGENTS["notion_publisher"]["description"]),
+            _node("end", "end", 940, 200,
+                  "Done — Notion URL",
+                  description="Final output is the Notion page URL of the codebase summary."),
+        ],
+        "edges": [
+            _edge("trigger", "supervisor"),
+            _edge("supervisor", "github_reader"),
+            _edge("supervisor", "analyst"),
+            _edge("supervisor", "notion_publisher"),
+            _edge("supervisor", "end"),
+            _edge("github_reader", "supervisor"),
+            _edge("analyst", "supervisor"),
+            _edge("notion_publisher", "supervisor"),
+        ],
+    }
+
+
 TEMPLATES: dict[str, dict] = {
     "research_report": {
         "key": "research_report",
@@ -315,6 +721,20 @@ TEMPLATES: dict[str, dict] = {
         "description": "Answers questions in Slack using web search, then asks for human approval in-thread before posting. Deterministic flow — the approval gate always runs.",
         "agents": _SLACK_QA_AGENTS,
         "build_graph": _slack_qa_graph,
+    },
+    "notion_report_generator": {
+        "key": "notion_report_generator",
+        "name": "Notion Report Generator",
+        "description": "Give it any topic — a researcher gathers web facts, a writer formats a plain-English report, and a publisher saves it to Notion. Final output: just the Notion URL.",
+        "agents": _NOTION_REPORT_AGENTS,
+        "build_graph": _notion_report_graph,
+    },
+    "github_codebase_summary": {
+        "key": "github_codebase_summary",
+        "name": "GitHub Codebase Summary",
+        "description": "Paste a GitHub repo URL — a reader fetches the README and metadata, an analyst writes a developer-friendly summary, and a publisher saves it to Notion. Final output: just the Notion URL.",
+        "agents": _GITHUB_SUMMARY_AGENTS,
+        "build_graph": _github_summary_graph,
     },
 }
 
@@ -358,6 +778,12 @@ async def instantiate_template(db: AsyncSession, key: str, user_id: uuid.UUID) -
         )
         agent = existing_result.scalar_one_or_none()
         if agent is None:
+            meta: dict = {
+                "template": key,
+                "is_supervisor": spec.get("supervisor", False),
+            }
+            if spec.get("mcp_providers"):
+                meta["mcp_providers"] = spec["mcp_providers"]
             agent = Agent(
                 user_id=user_id,
                 name=spec["name"],
@@ -365,7 +791,11 @@ async def instantiate_template(db: AsyncSession, key: str, user_id: uuid.UUID) -
                 role=spec.get("role", "assistant"),
                 system_prompt=spec["system_prompt"],
                 tools=spec.get("tools", []),
-                meta={"template": key, "is_supervisor": spec.get("supervisor", False)},
+                temperature=spec.get("temperature", 0.7),
+                max_tokens=spec.get("max_tokens", 8096),
+                max_iterations=spec.get("max_iterations", 5),
+                guardrails={},
+                meta=meta,
             )
             db.add(agent)
             await db.flush()  # populate agent.id
