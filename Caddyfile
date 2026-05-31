@@ -6,9 +6,11 @@
 
 139-59-10-53.sslip.io {
     reverse_proxy backend:8000 {
-        header_up Connection {>Connection}
-        header_up Upgrade {>Upgrade}
         header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        flush_interval -1
 
         transport http {
             versions 1.1

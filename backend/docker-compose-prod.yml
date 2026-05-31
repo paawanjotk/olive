@@ -52,7 +52,7 @@ services:
       TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
-      RELOAD: "true"
+      RELOAD: "false"
     volumes:
       - ./app:/app/app
       - ./tests:/app/tests
