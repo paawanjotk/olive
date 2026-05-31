@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.workflows import Workflow, WorkflowExecution, WorkflowStep, ExecutionEvent
-from app.schemas.workflows import WorkflowCreate, WorkflowUpdate
+from app.schemas.workflows import WorkflowCreate, WorkflowUpdate, WorkflowScheduleCreate
 from app.db.models.agents import Agent
 
 
@@ -272,3 +272,100 @@ async def mark_cancelled(db: AsyncSession, execution_id: uuid.UUID) -> None:
     ex.status = "cancelled"
     ex.completed_at = datetime.now(timezone.utc)
     await db.commit()
+
+
+# ── Workflow Schedules ────────────────────────────────────────────────────────
+
+async def create_schedule(
+    db: AsyncSession,
+    workflow_id: uuid.UUID,
+    user_id: uuid.UUID,
+    data: "WorkflowScheduleCreate",
+) -> "WorkflowSchedule":
+    from app.db.models.workflows import WorkflowSchedule
+    sched = WorkflowSchedule(
+        workflow_id=workflow_id,
+        user_id=user_id,
+        label=data.label,
+        schedule_type=data.schedule_type,
+        repeat_minutes=data.repeat_minutes,
+        input_text=data.input_text,
+        next_run_at=data.next_run_at,
+    )
+    db.add(sched)
+    await db.commit()
+    await db.refresh(sched)
+    return sched
+
+
+async def list_schedules(
+    db: AsyncSession, workflow_id: uuid.UUID, user_id: uuid.UUID
+) -> list["WorkflowSchedule"]:
+    from app.db.models.workflows import WorkflowSchedule
+    result = await db.execute(
+        select(WorkflowSchedule).where(
+            WorkflowSchedule.workflow_id == workflow_id,
+            WorkflowSchedule.user_id == user_id,
+        ).order_by(WorkflowSchedule.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def delete_schedule(
+    db: AsyncSession, schedule_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    from app.db.models.workflows import WorkflowSchedule
+    sched = (await db.execute(
+        select(WorkflowSchedule).where(
+            WorkflowSchedule.id == schedule_id,
+            WorkflowSchedule.user_id == user_id,
+        )
+    )).scalar_one_or_none()
+    if sched is None:
+        return False
+    await db.delete(sched)
+    await db.commit()
+    return True
+
+
+async def get_due_schedules(db: AsyncSession):
+    """Return all active schedules whose next_run_at is <= now."""
+    from datetime import datetime, timezone
+    from app.db.models.workflows import WorkflowSchedule
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        select(WorkflowSchedule).where(
+            WorkflowSchedule.is_active.is_(True),
+            WorkflowSchedule.next_run_at <= now,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def fire_schedule(db: AsyncSession, schedule: "WorkflowSchedule") -> str | None:
+    """Create an execution for the schedule and advance next_run_at. Returns execution id."""
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+
+    wf = await get_workflow(db, schedule.workflow_id)
+    if wf is None or not wf.is_active:
+        schedule.is_active = False
+        await db.commit()
+        return None
+
+    ex = await create_execution(
+        db,
+        workflow_id=schedule.workflow_id,
+        user_id=schedule.user_id,
+        input_data={"input": schedule.input_text},
+        trigger_type="schedule",
+        trigger_context={"schedule_id": str(schedule.id), "label": schedule.label},
+    )
+
+    schedule.last_run_at = now
+    if schedule.schedule_type == "once":
+        schedule.is_active = False
+    else:
+        schedule.next_run_at = now + timedelta(minutes=schedule.repeat_minutes or 60)
+    await db.commit()
+    return str(ex.id)

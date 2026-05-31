@@ -9,13 +9,13 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   ArrowLeft, Bot, GitBranch, ShieldCheck, Save, Play, Trash2, Loader2, Radio,
-  History, CheckCircle2, XCircle, Clock,
+  History, CheckCircle2, XCircle, Clock, CalendarClock, Plus, RefreshCw,
 } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { styleEdges, graphToFlow, flowToGraph } from '@/lib/workflowGraph'
-import { listExecutions } from '@/lib/api'
+import { listExecutions, listSchedules, createSchedule, deleteSchedule } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { Agent, Workflow, WorkflowExecution } from '@/lib/types'
+import type { Agent, Workflow, WorkflowExecution, WorkflowSchedule } from '@/lib/types'
 
 interface Props {
   workflow: Workflow
@@ -246,6 +246,7 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
                   onLabel={(label) => updateSelected({ label })}
                   onOpenChannels={() => setInspectorTab('channels')}
                   conflict={channelConflict}
+                  workflowId={workflow.id}
                 />
               )}
 
@@ -656,30 +657,41 @@ function ChannelsPanel({
 }
 
 function TriggerSource({
-  config, onChange, onLabel, onOpenChannels, conflict,
+  config, onChange, onLabel, onOpenChannels, conflict, workflowId,
 }: {
   config: any
   onChange: (c: any) => void
   onLabel: (label: string) => void
   onOpenChannels: () => void
   conflict?: string | null
+  workflowId: string
 }) {
-  const source: 'manual' | 'telegram' | 'slack' =
-    config.slack?.enabled ? 'slack' : config.telegram?.enabled ? 'telegram' : 'manual'
+  const source: 'manual' | 'telegram' | 'slack' | 'schedule' =
+    config.schedule?.enabled ? 'schedule'
+    : config.slack?.enabled ? 'slack'
+    : config.telegram?.enabled ? 'telegram'
+    : 'manual'
 
-  const pick = (src: 'manual' | 'telegram' | 'slack') => {
+  const pick = (src: 'manual' | 'telegram' | 'slack' | 'schedule') => {
     onChange({
       ...config,
-      telegram: { ...(config.telegram ?? {}), enabled: src === 'telegram' },
-      slack: { ...(config.slack ?? {}), enabled: src === 'slack' },
+      telegram:  { ...(config.telegram  ?? {}), enabled: src === 'telegram'  },
+      slack:     { ...(config.slack     ?? {}), enabled: src === 'slack'     },
+      schedule:  { ...(config.schedule  ?? {}), enabled: src === 'schedule'  },
     })
-    onLabel(src === 'slack' ? 'Slack @mention' : src === 'telegram' ? 'Telegram message' : 'Manual input')
+    const labels: Record<string, string> = {
+      slack: 'Slack @mention', telegram: 'Telegram message',
+      schedule: 'Scheduled', manual: 'Manual input',
+    }
+    onLabel(labels[src])
   }
+
+  const SOURCES = ['manual', 'telegram', 'slack', 'schedule'] as const
 
   return (
     <Field label="Trigger source">
-      <div className="grid grid-cols-3 gap-1.5">
-        {(['manual', 'telegram', 'slack'] as const).map((s) => (
+      <div className="grid grid-cols-2 gap-1.5">
+        {SOURCES.map((s) => (
           <button
             key={s}
             type="button"
@@ -725,13 +737,21 @@ function TriggerSource({
         </p>
       )}
 
-      <button
-        type="button"
-        onClick={onOpenChannels}
-        className="text-[10px] text-white/30 hover:text-white/60 mt-2.5 underline underline-offset-2"
-      >
-        More channel options →
-      </button>
+      {source === 'schedule' && (
+        <div className="mt-2.5">
+          <SchedulesPanel workflowId={workflowId} />
+        </div>
+      )}
+
+      {source !== 'schedule' && (
+        <button
+          type="button"
+          onClick={onOpenChannels}
+          className="text-[10px] text-white/30 hover:text-white/60 mt-2.5 underline underline-offset-2"
+        >
+          More channel options →
+        </button>
+      )}
     </Field>
   )
 }
@@ -825,6 +845,210 @@ function PanelToggle({
           value && 'translate-x-[14px]')} />
       </button>
     </label>
+  )
+}
+
+const REPEAT_PRESETS = [
+  { label: 'Every 15 min', minutes: 15 },
+  { label: 'Every 30 min', minutes: 30 },
+  { label: 'Hourly',       minutes: 60 },
+  { label: 'Every 6 hrs',  minutes: 360 },
+  { label: 'Daily',        minutes: 1440 },
+  { label: 'Weekly',       minutes: 10080 },
+]
+
+function fmtSchedule(s: WorkflowSchedule): string {
+  if (s.schedule_type === 'once') {
+    return `Once · ${new Date(s.next_run_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}`
+  }
+  const preset = REPEAT_PRESETS.find((p) => p.minutes === s.repeat_minutes)
+  const interval = preset ? preset.label : `Every ${s.repeat_minutes}m`
+  const next = new Date(s.next_run_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+  return `${interval} · next ${next}`
+}
+
+function SchedulesPanel({ workflowId }: { workflowId: string }) {
+  const [schedules, setSchedules] = useState<WorkflowSchedule[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [showForm, setShowForm] = useState(false)
+
+  // Form state
+  const [schedType, setSchedType] = useState<'once' | 'repeat'>('once')
+  const [label, setLabel] = useState('')
+  const [runAt, setRunAt] = useState('')          // for "once"
+  const [repeatMin, setRepeatMin] = useState(60)  // for "repeat"
+  const [firstRunAt, setFirstRunAt] = useState('') // first fire for "repeat"
+  const [inputText, setInputText] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try { setSchedules(await listSchedules(workflowId)) }
+    catch { /* ignore */ }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [workflowId])
+
+  const handleCreate = async () => {
+    setError(null)
+    if (schedType === 'once' && !runAt) { setError('Pick a date/time'); return }
+    if (schedType === 'repeat' && !firstRunAt) { setError('Pick the first run time'); return }
+    setSaving(true)
+    try {
+      const nextRunAt = schedType === 'once' ? new Date(runAt).toISOString() : new Date(firstRunAt).toISOString()
+      await createSchedule(workflowId, {
+        label: label || (schedType === 'once' ? 'One-time run' : 'Repeating run'),
+        schedule_type: schedType,
+        next_run_at: nextRunAt,
+        repeat_minutes: schedType === 'repeat' ? repeatMin : undefined,
+        input_text: inputText,
+      })
+      setShowForm(false)
+      setLabel(''); setRunAt(''); setFirstRunAt(''); setInputText('')
+      await load()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to create schedule')
+    } finally { setSaving(false) }
+  }
+
+  const handleDelete = async (s: WorkflowSchedule) => {
+    try {
+      await deleteSchedule(workflowId, s.id)
+      setSchedules((prev) => prev.filter((x) => x.id !== s.id))
+    } catch { /* ignore */ }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-wide text-white/40">Schedules</p>
+        <div className="flex items-center gap-1.5">
+          <button onClick={load} className="p-1 rounded text-white/30 hover:text-white/60">
+            <RefreshCw size={11} />
+          </button>
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.06] text-white/70 hover:bg-white/[0.10] text-[11px]"
+          >
+            <Plus size={11} /> New
+          </button>
+        </div>
+      </div>
+
+      {showForm && (
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3.5 space-y-3">
+          {/* Type selector */}
+          <div className="grid grid-cols-2 gap-1.5">
+            {(['once', 'repeat'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setSchedType(t)}
+                className={cn(
+                  'py-1.5 rounded-lg text-[11px] capitalize border transition-colors',
+                  schedType === t ? 'bg-white/[0.10] text-white border-white/20' : 'text-white/40 border-white/[0.06] hover:text-white/70'
+                )}
+              >
+                {t === 'once' ? 'One-time' : 'Repeating'}
+              </button>
+            ))}
+          </div>
+
+          {/* Label */}
+          <div>
+            <label className="text-[10px] text-white/40 mb-1 block">Label (optional)</label>
+            <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Morning digest"
+              className="builder-input text-[12px]" />
+          </div>
+
+          {schedType === 'once' ? (
+            <div>
+              <label className="text-[10px] text-white/40 mb-1 block">Run at</label>
+              <input type="datetime-local" value={runAt} onChange={(e) => setRunAt(e.target.value)}
+                className="builder-input text-[12px]" />
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="text-[10px] text-white/40 mb-1 block">Repeat every</label>
+                <select value={repeatMin} onChange={(e) => setRepeatMin(Number(e.target.value))}
+                  className="builder-input text-[12px]">
+                  {REPEAT_PRESETS.map((p) => (
+                    <option key={p.minutes} value={p.minutes} className="bg-[#1a1a1a]">{p.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] text-white/40 mb-1 block">First run at</label>
+                <input type="datetime-local" value={firstRunAt} onChange={(e) => setFirstRunAt(e.target.value)}
+                  className="builder-input text-[12px]" />
+              </div>
+            </>
+          )}
+
+          {/* Input */}
+          <div>
+            <label className="text-[10px] text-white/40 mb-1 block">Workflow input</label>
+            <textarea value={inputText} onChange={(e) => setInputText(e.target.value)}
+              placeholder="Input passed to the workflow on each run"
+              rows={3}
+              className="builder-input text-[12px] resize-none" />
+          </div>
+
+          {error && <p className="text-[11px] text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <button onClick={() => { setShowForm(false); setError(null) }}
+              className="flex-1 py-1.5 rounded-lg text-[11px] text-white/40 hover:text-white/70 hover:bg-white/[0.04]">
+              Cancel
+            </button>
+            <button onClick={handleCreate} disabled={saving}
+              className="flex-1 py-1.5 rounded-lg text-[11px] bg-white/[0.08] text-white hover:bg-white/[0.12] disabled:opacity-50">
+              {saving ? <Loader2 size={11} className="animate-spin inline mr-1" /> : null}
+              Create
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center pt-4"><Loader2 size={16} className="animate-spin text-white/30" /></div>
+      ) : schedules.length === 0 ? (
+        <p className="text-[11px] text-white/25 text-center pt-4">No schedules yet. Click New to add one.</p>
+      ) : (
+        <div className="space-y-2">
+          {schedules.map((s) => (
+            <div key={s.id}
+              className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <CalendarClock size={11} className={s.is_active ? 'text-emerald-400' : 'text-white/25'} />
+                  <span className="text-[12px] font-medium text-white/80 truncate">{s.label}</span>
+                  {!s.is_active && (
+                    <span className="text-[9px] uppercase tracking-wide text-white/25 bg-white/[0.05] px-1.5 py-0.5 rounded">done</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-white/35 leading-snug">{fmtSchedule(s)}</p>
+                {s.input_text && (
+                  <p className="text-[10px] text-white/20 mt-1 truncate">Input: {s.input_text}</p>
+                )}
+                {s.last_run_at && (
+                  <p className="text-[9px] text-white/20 mt-0.5">
+                    Last ran {new Date(s.last_run_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </p>
+                )}
+              </div>
+              <button onClick={() => handleDelete(s)}
+                className="p-1 rounded text-white/20 hover:text-red-400 flex-shrink-0">
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 

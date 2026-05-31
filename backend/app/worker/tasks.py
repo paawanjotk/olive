@@ -28,3 +28,34 @@ async def _run(execution_id: str) -> None:
     finally:
         set_worker_session_factory(None)
         await engine.dispose()
+
+
+@celery_app.task(name="app.worker.tasks.check_due_schedules")
+def check_due_schedules() -> None:
+    """Fires any workflow schedules whose next_run_at has passed. Runs every 60s via Celery Beat."""
+    asyncio.run(_check_schedules())
+
+
+async def _check_schedules() -> None:
+    from app.db.base import create_worker_engine_and_factory, set_worker_session_factory
+    from app.services import workflow_service
+
+    engine, factory = create_worker_engine_and_factory()
+    set_worker_session_factory(factory)
+    try:
+        async with factory() as db:
+            due = await workflow_service.get_due_schedules(db)
+            for sched in due:
+                logger.info("Firing schedule %s for workflow %s", sched.id, sched.workflow_id)
+                execution_id = await workflow_service.fire_schedule(db, sched)
+                if execution_id:
+                    task = execute_workflow.delay(execution_id)
+                    # store celery task id
+                    async with factory() as db2:
+                        import uuid
+                        await workflow_service.set_celery_task_id(
+                            db2, uuid.UUID(execution_id), task.id
+                        )
+    finally:
+        set_worker_session_factory(None)
+        await engine.dispose()

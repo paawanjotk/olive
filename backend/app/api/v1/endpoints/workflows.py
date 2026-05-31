@@ -21,6 +21,8 @@ from app.schemas.workflows import (
     WorkflowCreate,
     WorkflowExecutionResponse,
     WorkflowResponse,
+    WorkflowScheduleCreate,
+    WorkflowScheduleResponse,
     WorkflowStepResponse,
     WorkflowUpdate,
 )
@@ -375,3 +377,46 @@ async def execute_workflow(
     await workflow_service.set_celery_task_id(db, ex.id, task.id)
     await db.refresh(ex)
     return ex
+
+
+# ── Schedule endpoints ────────────────────────────────────────────────────────
+
+@router.get("/{workflow_id}/schedules", response_model=list[WorkflowScheduleResponse])
+async def list_schedules(
+    workflow_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _uid(current_user)
+    wf = await workflow_service.get_workflow(db, workflow_id, user_id)
+    if wf is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    return await workflow_service.list_schedules(db, workflow_id, user_id)
+
+
+@router.post("/{workflow_id}/schedules", response_model=WorkflowScheduleResponse, status_code=201)
+async def create_schedule(
+    workflow_id: uuid.UUID,
+    body: WorkflowScheduleCreate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = _uid(current_user)
+    wf = await workflow_service.get_workflow(db, workflow_id, user_id)
+    if wf is None:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+    if body.schedule_type == "repeat" and not body.repeat_minutes:
+        raise HTTPException(status_code=422, detail="repeat_minutes required for repeat schedules")
+    return await workflow_service.create_schedule(db, workflow_id, user_id, body)
+
+
+@router.delete("/{workflow_id}/schedules/{schedule_id}", status_code=204)
+async def delete_schedule(
+    workflow_id: uuid.UUID,
+    schedule_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    deleted = await workflow_service.delete_schedule(db, schedule_id, _uid(current_user))
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Schedule not found")

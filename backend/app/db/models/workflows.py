@@ -124,3 +124,36 @@ class ExecutionEvent(Base):
 
     def __repr__(self) -> str:
         return f"<ExecutionEvent id={self.id} type={self.event_type!r}>"
+
+
+class WorkflowSchedule(Base):
+    __tablename__ = "workflow_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True), primary_key=True,
+        default=uuid.uuid4, server_default=sa.text("gen_random_uuid()"),
+    )
+    workflow_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True), sa.ForeignKey("workflows.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        sa.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    label: Mapped[str] = mapped_column(sa.String(255), nullable=False, server_default="Schedule")
+    # "once" fires exactly once at next_run_at then deactivates.
+    # "repeat" fires every repeat_minutes, next_run_at advances each time.
+    schedule_type: Mapped[str] = mapped_column(sa.String(20), nullable=False)
+    repeat_minutes: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    input_text: Mapped[str] = mapped_column(sa.Text, nullable=False, server_default="")
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, server_default="true")
+    next_run_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False, index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False,
+        default=lambda: datetime.now(timezone.utc), server_default=sa.text("now()"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<WorkflowSchedule id={self.id} type={self.schedule_type!r}>"

@@ -19,4 +19,10 @@ celery_app.conf.update(
     # Workflow runs are long; let them finish rather than killing mid-graph.
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    beat_schedule={
+        "check-due-schedules": {
+            "task": "app.worker.tasks.check_due_schedules",
+            "schedule": 60.0,  # every 60 seconds
+        },
+    },
 )

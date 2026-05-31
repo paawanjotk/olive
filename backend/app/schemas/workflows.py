@@ -112,6 +112,30 @@ class TraceSpanResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class WorkflowScheduleCreate(BaseModel):
+    label: str = "Schedule"
+    schedule_type: str  # "once" | "repeat"
+    next_run_at: datetime  # for "once": exact fire time; for "repeat": first fire time
+    repeat_minutes: Optional[int] = None  # required when schedule_type=="repeat"
+    input_text: str = ""
+
+
+class WorkflowScheduleResponse(BaseModel):
+    id: UUID
+    workflow_id: UUID
+    user_id: UUID
+    label: str
+    schedule_type: str
+    repeat_minutes: Optional[int]
+    input_text: str
+    is_active: bool
+    next_run_at: datetime
+    last_run_at: Optional[datetime]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class ExecutionTraceResponse(BaseModel):
     execution_id: UUID
     workflow_id: UUID

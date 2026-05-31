@@ -77,6 +77,23 @@ services:
       redis:
         condition: service_healthy
 
+  beat:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        SDK_PATH: sdk
+    restart: unless-stopped
+    command: beat
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/ollive_chat
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   redis:
     image: redis:7-alpine
     restart: unless-stopped

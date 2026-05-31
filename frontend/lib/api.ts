@@ -2,6 +2,7 @@ import type {
   User, Session, Message, Agent, AgentCreate, AgentUpdate,
   Workflow, WorkflowCreate, WorkflowTemplate, WorkflowExecution, WorkflowStep,
   GraphJson, ChannelBinding, ExecutionWithWorkflow, ExecutionTrace,
+  WorkflowSchedule, WorkflowScheduleCreate,
 } from './types'
 import { supabase } from './supabase'
 
@@ -159,6 +160,10 @@ export async function updateAgent(agentId: string, data: AgentUpdate): Promise<A
 
 export async function deleteAgent(agentId: string): Promise<void> {
   return apiRequest<void>(`/agents/${agentId}`, { method: 'DELETE' })
+}
+
+export async function deduplicateAgents(): Promise<{ removed: number; kept: number }> {
+  return apiRequest<{ removed: number; kept: number }>('/agents/deduplicate', { method: 'POST' })
 }
 
 export async function testAgent(
@@ -340,3 +345,20 @@ export const slackDisconnect = () => channelDisconnect('slack')
 export const telegramGenerateCode = () => channelConnect('telegram') as Promise<TelegramConnectResult>
 export const telegramStatus       = () => channelStatus('telegram') as Promise<{ connected: boolean; chat_id?: string }>
 export const telegramDisconnect   = () => channelDisconnect('telegram')
+
+// ── Workflow Schedules ────────────────────────────────────────────────────────
+
+export async function listSchedules(workflowId: string): Promise<WorkflowSchedule[]> {
+  return apiRequest<WorkflowSchedule[]>(`/workflows/${workflowId}/schedules`)
+}
+
+export async function createSchedule(workflowId: string, data: WorkflowScheduleCreate): Promise<WorkflowSchedule> {
+  return apiRequest<WorkflowSchedule>(`/workflows/${workflowId}/schedules`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function deleteSchedule(workflowId: string, scheduleId: string): Promise<void> {
+  return apiRequest<void>(`/workflows/${workflowId}/schedules/${scheduleId}`, { method: 'DELETE' })
+}

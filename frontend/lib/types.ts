@@ -228,6 +228,28 @@ export interface ExecutionTrace {
   spans: TraceSpan[]
 }
 
+export interface WorkflowSchedule {
+  id: string
+  workflow_id: string
+  user_id: string
+  label: string
+  schedule_type: 'once' | 'repeat'
+  repeat_minutes: number | null
+  input_text: string
+  is_active: boolean
+  next_run_at: string
+  last_run_at: string | null
+  created_at: string
+}
+
+export interface WorkflowScheduleCreate {
+  label?: string
+  schedule_type: 'once' | 'repeat'
+  next_run_at: string   // ISO datetime
+  repeat_minutes?: number
+  input_text?: string
+}
+
 export interface ChannelBinding {
   id: string
   user_id: string

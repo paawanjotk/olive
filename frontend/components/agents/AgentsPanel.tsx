@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Bot, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, Bot, Loader2, AlertCircle, Merge } from 'lucide-react'
 import AgentCard from './AgentCard'
 import AgentForm from './AgentForm'
-import { listAgents, createAgent, updateAgent, deleteAgent } from '@/lib/api'
+import { listAgents, createAgent, updateAgent, deleteAgent, deduplicateAgents } from '@/lib/api'
 import type { Agent, AgentCreate } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -51,6 +51,15 @@ export default function AgentsPanel() {
     setAgents((prev) => prev.filter((a) => a.id !== agent.id))
   }
 
+  const handleDeduplicate = async () => {
+    const result = await deduplicateAgents()
+    if (result.removed > 0) {
+      await load()
+    } else {
+      alert('No duplicates found.')
+    }
+  }
+
   const startEdit = (agent: Agent) => {
     setEditing(agent)
     setView('edit')
@@ -74,18 +83,29 @@ export default function AgentsPanel() {
               <span className="text-[11px] text-white/20 font-mono">{agents.length}</span>
             )}
           </div>
-          <button
-            onClick={() => { setEditing(null); setView('create') }}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
-              view === 'create'
-                ? 'bg-white text-black'
-                : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white'
+          <div className="flex items-center gap-1">
+            {agents.length > 5 && (
+              <button
+                onClick={handleDeduplicate}
+                title="Remove duplicate agents (keeps oldest copy of each name)"
+                className="p-1.5 rounded-lg text-white/25 hover:text-amber-300 hover:bg-amber-500/10 transition-colors"
+              >
+                <Merge size={12} />
+              </button>
             )}
-          >
-            <Plus size={12} />
-            New
-          </button>
+            <button
+              onClick={() => { setEditing(null); setView('create') }}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
+                view === 'create'
+                  ? 'bg-white text-black'
+                  : 'bg-white/[0.06] text-white/60 hover:bg-white/[0.10] hover:text-white'
+              )}
+            >
+              <Plus size={12} />
+              New
+            </button>
+          </div>
         </div>
 
         {/* Agent list */}

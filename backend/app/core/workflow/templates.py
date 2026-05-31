@@ -8,6 +8,7 @@ build_graph() that returns React Flow {nodes, edges} referencing agent keys.
 import uuid
 from typing import Callable
 
+from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.agents import Agent
@@ -328,25 +329,42 @@ def list_templates() -> list[dict]:
 
 
 async def instantiate_template(db: AsyncSession, key: str, user_id: uuid.UUID) -> Workflow:
-    """Create the template's agents for the user and a workflow wiring them."""
+    """Create the template's agents for the user and a workflow wiring them.
+
+    Agents are reused if an active agent with the same name and template key
+    already exists for this user — prevents duplicates when the same template
+    is cloned more than once."""
     template = TEMPLATES.get(key)
     if template is None:
         raise KeyError(key)
 
-    # 1. Create agents, mapping each agent key -> new agent id.
+    # 1. Create agents, mapping each agent key -> agent id.
+    #    Reuse an existing agent if name + template key already match.
     key_to_id: dict[str, str] = {}
     for akey, spec in template["agents"].items():
-        agent = Agent(
-            user_id=user_id,
-            name=spec["name"],
-            description=spec.get("description", ""),
-            role=spec.get("role", "assistant"),
-            system_prompt=spec["system_prompt"],
-            tools=spec.get("tools", []),
-            meta={"template": key, "is_supervisor": spec.get("supervisor", False)},
+        existing_result = await db.execute(
+            select(Agent).where(
+                and_(
+                    Agent.user_id == user_id,
+                    Agent.name == spec["name"],
+                    Agent.is_active.is_(True),
+                    Agent.meta["template"].as_string() == key,
+                )
+            )
         )
-        db.add(agent)
-        await db.flush()  # populate agent.id
+        agent = existing_result.scalar_one_or_none()
+        if agent is None:
+            agent = Agent(
+                user_id=user_id,
+                name=spec["name"],
+                description=spec.get("description", ""),
+                role=spec.get("role", "assistant"),
+                system_prompt=spec["system_prompt"],
+                tools=spec.get("tools", []),
+                meta={"template": key, "is_supervisor": spec.get("supervisor", False)},
+            )
+            db.add(agent)
+            await db.flush()  # populate agent.id
         key_to_id[akey] = str(agent.id)
 
     # 2. Build graph_json, replacing agentKey placeholders with real agent ids.

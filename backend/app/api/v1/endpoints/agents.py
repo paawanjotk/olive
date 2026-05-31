@@ -67,6 +67,40 @@ async def update_agent(
     return agent
 
 
+@router.post("/deduplicate", status_code=200)
+async def deduplicate_agents(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete duplicate agents, keeping the oldest copy of each (name, template) pair.
+    Safe to call multiple times — idempotent."""
+    import uuid as _uuid
+    from sqlalchemy import select, func
+    from app.db.models.agents import Agent
+
+    user_id = uuid.UUID(current_user["id"])
+    result = await db.execute(
+        select(Agent).where(Agent.user_id == user_id, Agent.is_active.is_(True))
+        .order_by(Agent.created_at.asc())
+    )
+    agents = result.scalars().all()
+
+    # Keep earliest agent per (name, template_key) combination
+    seen: dict[tuple, str] = {}  # (name, template_key) -> first agent id
+    deduped = 0
+    for agent in agents:
+        template_key = (agent.meta or {}).get("template", "")
+        key = (agent.name, template_key)
+        if key in seen:
+            agent.is_active = False
+            deduped += 1
+        else:
+            seen[key] = str(agent.id)
+
+    await db.commit()
+    return {"removed": deduped, "kept": len(seen)}
+
+
 @router.delete("/{agent_id}", status_code=204)
 async def delete_agent(
     agent_id: uuid.UUID,
