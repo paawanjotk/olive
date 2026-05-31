@@ -16,12 +16,14 @@ async def create_session(
     db: AsyncSession,
     user_id: uuid.UUID,
     title: str = "New Chat",
+    source: str = "web",
 ) -> Session:
     """Create a new chat session."""
     session = Session(
         id=uuid.uuid4(),
         user_id=user_id,
         title=title,
+        source=source,
     )
     db.add(session)
     await db.flush()
@@ -31,12 +33,17 @@ async def create_session(
 
 
 async def get_user_sessions(
-    db: AsyncSession, user_id: uuid.UUID
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    source: str = "web",
 ) -> List[Session]:
-    """Get all sessions for a user, ordered by updated_at descending."""
+    """Get sessions for a user filtered by source, ordered by updated_at descending.
+
+    Defaults to 'web' so channel sessions (slack, telegram) are hidden from the dashboard.
+    """
     result = await db.execute(
         sa.select(Session)
-        .where(Session.user_id == user_id)
+        .where(Session.user_id == user_id, Session.source == source)
         .order_by(Session.updated_at.desc())
     )
     return list(result.scalars().all())

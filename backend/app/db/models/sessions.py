@@ -28,6 +28,14 @@ class Session(Base):
         default="New Chat",
         server_default="New Chat",
     )
+    # "web" for dashboard sessions; platform name ("slack", "telegram") for channel sessions.
+    source: Mapped[str] = mapped_column(
+        sa.String(50),
+        nullable=False,
+        default="web",
+        server_default="web",
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True),
         nullable=False,

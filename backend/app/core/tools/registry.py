@@ -10,6 +10,7 @@ from .workflow_tools import (
     tool_list_workflows, tool_run_workflow, tool_get_workflow_status,
     tool_pause_execution, tool_resume_execution, tool_terminate_execution,
 )
+from .slack_tools import slack_list_threads, slack_get_thread
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,60 @@ ANTHROPIC_TOOL_DEFS = [
             "required": ["execution_id"],
         },
     },
+    {
+        "name": "slack_list_threads",
+        "description": (
+            "List recent parent messages (thread starters) from a Slack channel. "
+            "Returns each thread's opening text and reply count so you can decide "
+            "which threads to read in full with slack_get_thread. "
+            "Use this to explore Slack without loading all content at once."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {
+                    "type": "string",
+                    "description": "Slack channel ID (e.g. C012AB3CD)",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max number of threads to return (1-100, default 20)",
+                    "default": 20,
+                },
+                "oldest": {
+                    "type": "string",
+                    "description": "Only include messages after this Unix timestamp (e.g. '1716000000')",
+                },
+                "latest": {
+                    "type": "string",
+                    "description": "Only include messages before this Unix timestamp",
+                },
+            },
+            "required": ["channel_id"],
+        },
+    },
+    {
+        "name": "slack_get_thread",
+        "description": (
+            "Fetch all messages in a specific Slack thread (parent message + replies). "
+            "Use the ts value from slack_list_threads to identify the thread. "
+            "Returns formatted conversation text from that thread only."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "channel_id": {
+                    "type": "string",
+                    "description": "Slack channel ID containing the thread",
+                },
+                "thread_ts": {
+                    "type": "string",
+                    "description": "Timestamp of the thread's parent message (ts from slack_list_threads)",
+                },
+            },
+            "required": ["channel_id", "thread_ts"],
+        },
+    },
 ]
 
 # ── Sync-to-async adapter for calculator and datetime ────────────────────────
@@ -175,6 +230,8 @@ TOOL_REGISTRY: dict[str, Any] = {
     "pause_execution": tool_pause_execution,
     "resume_execution": tool_resume_execution,
     "terminate_execution": tool_terminate_execution,
+    "slack_list_threads": slack_list_threads,
+    "slack_get_thread": slack_get_thread,
 }
 
 

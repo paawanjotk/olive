@@ -106,9 +106,12 @@ async def start_socket_handler() -> None:
         team_id = event.get("team") or event.get("team_id") or "unknown"
         user_text = strip_mentions(event.get("text", "")).strip() or "Hello!"
 
+        # thread_id scopes the session to this specific Slack thread
+        thread_id = f"{channel_id}:{thread_ts}"
+
         logger.info(
-            "Slack @mention: team=%s channel=%s user=%s text=%r",
-            team_id, channel_id, event.get("user"), user_text,
+            "Slack @mention: team=%s channel=%s thread=%s user=%s text=%r",
+            team_id, channel_id, thread_ts, event.get("user"), user_text,
         )
 
         # Post placeholder immediately so users see a response is coming
@@ -136,6 +139,8 @@ async def start_socket_handler() -> None:
             "list_workflows":      "Fetching workflows",
             "run_workflow":        "Starting workflow",
             "get_workflow_status": "Checking workflow status",
+            "slack_list_threads":  "Reading Slack threads",
+            "slack_get_thread":    "Reading Slack thread",
         }
 
         chunks: list[str] = []
@@ -145,6 +150,7 @@ async def start_socket_handler() -> None:
                 platform="slack",
                 external_id=team_id,
                 user_text=user_text,
+                thread_id=thread_id,
             ):
                 if ev.get("type") == "tool_start":
                     label = _TOOL_LABELS.get(ev["tool_name"], f"Using {ev['tool_name']}")

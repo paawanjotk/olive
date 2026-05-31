@@ -4,7 +4,10 @@ from typing import Optional
 
 # Available tool names — the single source of truth used by both the registry
 # and the AgentConfig validation.
-AVAILABLE_TOOLS = ["web_search", "calculator", "get_datetime"]
+AVAILABLE_TOOLS = [
+    "web_search", "calculator", "get_datetime",
+    "slack_list_threads", "slack_get_thread",
+]
 
 
 @dataclass
@@ -51,7 +54,11 @@ class AgentConfig:
         from app.core.llm.manager import SYSTEM_PROMPT
         return cls(
             system_prompt=SYSTEM_PROMPT,
-            tools=AVAILABLE_TOOLS + ["list_workflows", "run_workflow", "get_workflow_status", "pause_execution", "resume_execution", "terminate_execution"],
+            tools=AVAILABLE_TOOLS + [
+                "list_workflows", "run_workflow", "get_workflow_status",
+                "pause_execution", "resume_execution", "terminate_execution",
+                "slack_list_threads", "slack_get_thread",
+            ],
         )
 
     @classmethod
