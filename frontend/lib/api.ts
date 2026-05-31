@@ -1,7 +1,7 @@
 import type {
   User, Session, Message, Agent, AgentCreate, AgentUpdate,
   Workflow, WorkflowCreate, WorkflowTemplate, WorkflowExecution, WorkflowStep,
-  GraphJson, ChannelBinding, ExecutionWithWorkflow,
+  GraphJson, ChannelBinding, ExecutionWithWorkflow, ExecutionTrace,
 } from './types'
 import { supabase } from './supabase'
 
@@ -263,6 +263,22 @@ export async function approveCheckpoint(
     method: 'POST',
     body: JSON.stringify({ node_id: nodeId, approved, reason }),
   })
+}
+
+export async function approveToolCall(
+  executionId: string,
+  callId: string,
+  approved: boolean,
+  reason = ''
+): Promise<void> {
+  return apiRequest<void>(`/workflows/executions/${executionId}/approve_tool`, {
+    method: 'POST',
+    body: JSON.stringify({ call_id: callId, approved, reason }),
+  })
+}
+
+export async function getExecutionTrace(executionId: string): Promise<ExecutionTrace> {
+  return apiRequest<ExecutionTrace>(`/workflows/executions/${executionId}/trace`)
 }
 
 /** Build the SSE URL for a live execution stream (token passed as query param). */

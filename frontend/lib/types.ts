@@ -171,6 +171,7 @@ export type ExecutionEvent =
   | { type: 'node_completed'; execution_id: string; node_id: string; output: string; usage?: Record<string, number>; ts: string }
   | { type: 'node_failed'; execution_id: string; node_id: string; error: string; ts: string }
   | { type: 'approval_requested'; execution_id: string; node_id: string; preview: string; ts: string }
+  | { type: 'tool_approval_requested'; execution_id: string; node_id: string; tool_name: string; tool_input: Record<string, unknown>; call_id: string; ts: string }
   | { type: 'output_sent'; execution_id: string; platform: string; chat_id: string; ts: string }
   | { type: 'execution_completed'; execution_id: string; output: string; ts: string }
   | { type: 'execution_failed'; execution_id: string; error: string; ts: string }
@@ -178,6 +179,53 @@ export type ExecutionEvent =
 
 export interface ExecutionWithWorkflow extends WorkflowExecution {
   workflow_name: string
+}
+
+export interface SpanEvent {
+  id: string
+  event_type: 'tool_start' | 'tool_end' | 'supervisor_decision' | string
+  payload: Record<string, unknown>
+  created_at: string
+}
+
+export interface TraceSpan {
+  id: string
+  node_id: string
+  node_label: string
+  span_type: 'agent' | 'supervisor' | 'checkpoint' | 'trigger' | 'end' | string
+  agent_name: string | null
+  model: string | null
+  provider: string | null
+  max_tokens: number | null
+  status: string
+  started_at: string | null
+  completed_at: string | null
+  duration_ms: number | null
+  input_tokens: number | null
+  output_tokens: number | null
+  cost_usd: number | null
+  input: Record<string, unknown>
+  output: { text?: string; decision?: Record<string, unknown>; usage?: Record<string, number> } | null
+  error_message: string | null
+  events: SpanEvent[]
+}
+
+export interface ExecutionTrace {
+  execution_id: string
+  workflow_id: string
+  workflow_name: string
+  status: string
+  trigger_type: string
+  input_text: string
+  output_text: string | null
+  error_message: string | null
+  started_at: string | null
+  completed_at: string | null
+  duration_ms: number | null
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cost_usd: number
+  spans: TraceSpan[]
 }
 
 export interface ChannelBinding {

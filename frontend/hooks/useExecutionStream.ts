@@ -19,6 +19,13 @@ export interface PendingApproval {
   preview: string
 }
 
+export interface PendingToolApproval {
+  callId: string
+  toolName: string
+  toolInput: Record<string, unknown>
+  nodeId: string
+}
+
 export interface StreamState {
   status: ExecutionStatus
   nodeStatus: Record<string, NodeStatus>
@@ -30,6 +37,7 @@ export interface StreamState {
   finalOutput: string
   error: string | null
   pendingApproval: PendingApproval | null
+  pendingToolApproval: PendingToolApproval | null
 }
 
 const EMPTY: StreamState = {
@@ -43,6 +51,7 @@ const EMPTY: StreamState = {
   finalOutput: '',
   error: null,
   pendingApproval: null,
+  pendingToolApproval: null,
 }
 
 const TERMINAL: ExecutionStatus[] = ['completed', 'failed', 'cancelled', 'paused']
@@ -171,7 +180,20 @@ export function useExecutionStream(executionId: string | null, refreshKey = 0): 
             case 'tool_start':
               next.logs = log(s, ev.type, `→ tool ${ev.tool_name}`, ev.node_id)
               break
+            case 'tool_approval_requested': {
+              const tev = ev as Extract<typeof ev, { type: 'tool_approval_requested' }>
+              next.pendingToolApproval = {
+                callId: tev.call_id,
+                toolName: tev.tool_name,
+                toolInput: tev.tool_input ?? {},
+                nodeId: tev.node_id ?? '',
+              }
+              next.logs = log(s, ev.type, `🔐 tool "${tev.tool_name}" awaiting approval`, tev.node_id)
+              break
+            }
             case 'tool_end':
+              // Clear pending tool approval once tool resolves (approved or blocked)
+              if (s.pendingToolApproval) next.pendingToolApproval = null
               next.logs = log(s, ev.type, `✓ tool ${ev.tool_name}`, ev.node_id)
               break
             case 'supervisor_decision': {

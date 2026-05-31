@@ -6,7 +6,10 @@ from typing import Any
 from .calculator import calculate
 from .datetime_tool import get_datetime
 from .web_search import web_search
-from .workflow_tools import tool_list_workflows, tool_run_workflow, tool_get_workflow_status
+from .workflow_tools import (
+    tool_list_workflows, tool_run_workflow, tool_get_workflow_status,
+    tool_pause_execution, tool_resume_execution, tool_terminate_execution,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +116,39 @@ ANTHROPIC_TOOL_DEFS = [
             "required": ["execution_id"],
         },
     },
+    {
+        "name": "pause_execution",
+        "description": "Pause a running workflow execution. The execution can be resumed later. Use get_workflow_status to confirm the paused state.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "execution_id": {"type": "string", "description": "The execution UUID to pause"},
+            },
+            "required": ["execution_id"],
+        },
+    },
+    {
+        "name": "resume_execution",
+        "description": "Resume a paused workflow execution from where it left off.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "execution_id": {"type": "string", "description": "The execution UUID to resume"},
+            },
+            "required": ["execution_id"],
+        },
+    },
+    {
+        "name": "terminate_execution",
+        "description": "Immediately stop (terminate) a running or paused workflow execution. This cannot be undone — use pause_execution if you want to resume later.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "execution_id": {"type": "string", "description": "The execution UUID to terminate"},
+            },
+            "required": ["execution_id"],
+        },
+    },
 ]
 
 # ── Sync-to-async adapter for calculator and datetime ────────────────────────
@@ -136,6 +172,9 @@ TOOL_REGISTRY: dict[str, Any] = {
     "list_workflows": tool_list_workflows,
     "run_workflow": tool_run_workflow,
     "get_workflow_status": tool_get_workflow_status,
+    "pause_execution": tool_pause_execution,
+    "resume_execution": tool_resume_execution,
+    "terminate_execution": tool_terminate_execution,
 }
 
 

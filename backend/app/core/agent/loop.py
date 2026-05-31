@@ -16,6 +16,7 @@ the Gemini fallback loop (same tool-calling capability, same event schema).
 import asyncio
 import json
 import logging
+import uuid as _uuid_mod
 from typing import AsyncIterator, Dict, Any, List, Optional
 
 import anthropic
@@ -80,6 +81,17 @@ def _failures(session_id: Optional[str], provider: str) -> int:
     if not session_id:
         return 0
     return _session_provider_failures.get(session_id, {}).get(provider, 0)
+
+
+def _history_has_tool_results(messages: List[Dict[str, Any]]) -> bool:
+    """True if any prior user message contains a tool_result block."""
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, list):
+            for b in content:
+                if isinstance(b, dict) and b.get("type") == "tool_result":
+                    return True
+    return False
 
 
 def _msg_preview(messages: List[Dict[str, Any]]) -> Optional[str]:
@@ -297,6 +309,97 @@ async def _stream_gemini(
 
 # ── Public entry-point ─────────────────────────────────────────────────────────
 
+async def _await_tool_approval(
+    tool_name: str,
+    tool_input: dict,
+    call_id: str,
+    execution_id: str,
+    trigger_context: Optional[dict],
+    approval_mode: str,
+    timeout: int,
+) -> bool:
+    """Block on Redis until a human approves/rejects the tool call or timeout.
+
+    Returns True if approved (or timed out — auto-approve), False if rejected.
+    Also posts a Slack Block Kit message when mode is 'slack' or 'both'."""
+    import redis.asyncio as aioredis
+    from app.core.config import settings
+
+    approval_key = f"tool_approval:{execution_id}:{call_id}"
+    slack_lookup_key: Optional[str] = None
+
+    # Post Slack Block Kit when slack mode is active and run was triggered from Slack
+    platform = (trigger_context or {}).get("platform")
+    if approval_mode in ("slack", "both") and platform == "slack":
+        channel_id = (trigger_context or {}).get("channel_id")
+        thread_ts = (trigger_context or {}).get("thread_ts")
+        if channel_id:
+            try:
+                from app.services import slack_service
+                input_preview = json.dumps(tool_input, ensure_ascii=False)[:600]
+                blocks = [
+                    {"type": "header", "text": {"type": "plain_text", "text": "🔧  Tool Approval Required", "emoji": True}},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": f"*Tool:* `{tool_name}`"}},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": f"*Input:*\n```{input_preview}```"}},
+                    {"type": "divider"},
+                    {
+                        "type": "actions",
+                        "block_id": f"tool_appr_{execution_id[:8]}_{call_id}",
+                        "elements": [
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "✅  Allow", "emoji": True},
+                                "style": "primary",
+                                "action_id": "tool_approve",
+                                "value": json.dumps({"execution_id": execution_id, "call_id": call_id}),
+                            },
+                            {
+                                "type": "button",
+                                "text": {"type": "plain_text", "text": "❌  Block", "emoji": True},
+                                "style": "danger",
+                                "action_id": "tool_reject",
+                                "value": json.dumps({"execution_id": execution_id, "call_id": call_id}),
+                            },
+                        ],
+                    },
+                ]
+                await slack_service.send_blocks(channel_id, blocks, thread_ts=thread_ts)
+                # Register text-reply fallback so "approve"/"reject" in the thread works too
+                slack_lookup_key = f"slack_tool_approval:{channel_id}:{thread_ts}"
+                r0 = aioredis.from_url(settings.REDIS_URL)
+                try:
+                    await r0.set(
+                        slack_lookup_key,
+                        json.dumps({"execution_id": execution_id, "call_id": call_id}),
+                        ex=timeout + 30,
+                    )
+                finally:
+                    await r0.aclose()
+            except Exception as e:
+                logger.warning("Failed to send Slack tool-approval prompt: %s", e)
+
+    r = aioredis.from_url(settings.REDIS_URL)
+    try:
+        result = await r.blpop(approval_key, timeout=timeout)
+        if result:
+            data = json.loads(result[1])
+            return bool(data.get("approved", True))
+        # Timeout → auto-approve
+        return True
+    except Exception:
+        return True  # on Redis errors, fail open (don't block the agent forever)
+    finally:
+        if slack_lookup_key:
+            try:
+                await r.delete(slack_lookup_key)
+            except Exception:
+                pass
+        try:
+            await r.aclose()
+        except Exception:
+            pass
+
+
 async def run_agent_turn(
     messages: List[Dict[str, Any]],
     session_id: Optional[str] = None,
@@ -304,6 +407,8 @@ async def run_agent_turn(
     conversation_id: Optional[str] = None,
     cancel_event: Optional[asyncio.Event] = None,
     agent_config: Optional[Any] = None,
+    execution_id: Optional[str] = None,
+    trigger_context: Optional[dict] = None,
 ) -> AsyncIterator[Dict[str, Any]]:
     """
     Run one full agent turn (possibly multiple tool calls) and yield WS events.
@@ -417,13 +522,35 @@ async def run_agent_turn(
             stop_reason: Optional[str] = None
             cancelled_mid_stream = False
 
-            async with client.messages.stream(
-                model=settings.ANTHROPIC_MODEL,
-                max_tokens=config.max_tokens,
-                system=config.effective_system_prompt,
-                tools=round_tools,
-                messages=current_messages,
-            ) as stream:
+            # On the synthesis round, if the conversation already contains tool
+            # results, the model often returns end_turn with NO text because it
+            # interprets the successful tool calls as "task complete". Append an
+            # explicit user instruction forcing it to write the final answer
+            # from the gathered evidence. Without this, multi-tool research
+            # workflows return empty output and the supervisor loops forever.
+            round_messages = current_messages
+            if is_final_round and _history_has_tool_results(current_messages):
+                round_messages = current_messages + [{
+                    "role": "user",
+                    "content": (
+                        "Based on the tool results above, write your complete final "
+                        "answer to the original request now. Do not call any tools — "
+                        "they are unavailable. Respond in plain text."
+                    ),
+                }]
+
+            # Omit `tools` entirely on the synthesis round (round_tools=[]).
+            # Passing tools=[] with tool_result messages in history causes
+            # Anthropic to silently return an empty end_turn response.
+            stream_params: dict = {
+                "model": settings.ANTHROPIC_MODEL,
+                "max_tokens": config.max_tokens,
+                "system": config.effective_system_prompt,
+                "messages": round_messages,
+            }
+            if round_tools:
+                stream_params["tools"] = round_tools
+            async with client.messages.stream(**stream_params) as stream:
                 async for event in stream:
                     if cancel_event and cancel_event.is_set():
                         cancelled_mid_stream = True
@@ -508,9 +635,43 @@ async def run_agent_turn(
                         continue
 
                     tool_input = block.get("input", {})
+                    tool_call_id = _uuid_mod.uuid4().hex[:12]
 
                     events_yielded = True
                     yield {"type": "tool_start", "tool_name": block["name"], "tool_input": tool_input}
+
+                    # ── Human-in-the-loop approval gate ──────────────────────────────
+                    needs_approval = (
+                        execution_id is not None
+                        and block["name"] in (config.approval_tools or [])
+                    )
+                    if needs_approval:
+                        yield {
+                            "type": "tool_approval_requested",
+                            "tool_name": block["name"],
+                            "tool_input": tool_input,
+                            "call_id": tool_call_id,
+                        }
+                        approved = await _await_tool_approval(
+                            tool_name=block["name"],
+                            tool_input=tool_input,
+                            call_id=tool_call_id,
+                            execution_id=execution_id,
+                            trigger_context=trigger_context,
+                            approval_mode=config.tool_approval_mode,
+                            timeout=config.tool_approval_timeout,
+                        )
+                        if not approved:
+                            result = f"Tool call '{block['name']}' was blocked by a human reviewer."
+                            events_yielded = True
+                            yield {"type": "tool_end", "tool_name": block["name"], "tool_result": result}
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block["id"],
+                                "content": result,
+                            })
+                            continue
+                    # ─────────────────────────────────────────────────────────────────
 
                     tool_trace = obs.start_trace(
                         provider="tool",
@@ -547,8 +708,16 @@ async def run_agent_turn(
                         "content": result,
                     })
 
+                # Drop empty text blocks — Anthropic emits content_block_start
+                # for text occasionally with no following deltas, leaving
+                # {"type":"text","text":""}. Echoing those back rejects the
+                # next request and silently breaks the loop.
+                safe_blocks = [
+                    b for b in content_blocks
+                    if not (b.get("type") == "text" and not (b.get("text") or "").strip())
+                ]
                 current_messages = current_messages + [
-                    {"role": "assistant", "content": content_blocks},
+                    {"role": "assistant", "content": safe_blocks or content_blocks},
                     {"role": "user", "content": tool_results},
                 ]
                 continue
@@ -592,7 +761,7 @@ async def run_agent_turn(
 
         try:
             async for event in _stream_gemini(
-                messages, cancel_event, root_trace, obs, session_id, user_id
+                messages, cancel_event, root_trace, obs, session_id, user_id, config
             ):
                 yield event
             _record_success(session_id, "gemini")

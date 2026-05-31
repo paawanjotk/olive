@@ -36,7 +36,7 @@ async def start_socket_handler() -> None:
     # ── Text-reply approval fallback ───────────────────────────────────────────
     @slack_app.event("message")
     async def handle_message(event, say):
-        """Only handles approve/reject text replies for pending checkpoint nodes."""
+        """Handles approve/reject text replies for checkpoint nodes and tool-call approvals."""
         if event.get("bot_id") or event.get("subtype"):
             return
         channel_id = event.get("channel")
@@ -47,14 +47,37 @@ async def start_socket_handler() -> None:
         import json
         import redis.asyncio as aioredis
 
-        lookup_key = f"slack_approval:{channel_id}:{thread_ts}"
+        text = (event.get("text") or "").lower()
         r = aioredis.from_url(settings.REDIS_URL)
         try:
-            raw = await r.get(lookup_key)
+            # Check for pending tool-call approval first (more specific)
+            tool_lookup_key = f"slack_tool_approval:{channel_id}:{thread_ts}"
+            raw = await r.get(tool_lookup_key)
+            if raw:
+                info = json.loads(raw)
+                if any(w in text for w in ("reject", "deny", "decline", "stop", "cancel", "no", "block")):
+                    decision = {"approved": False, "reason": event.get("text", "")}
+                elif any(w in text for w in ("approve", "approved", "allow", "yes", "lgtm", "ok", "go ahead", "proceed")):
+                    decision = {"approved": True, "reason": event.get("text", "")}
+                else:
+                    await say(text="Reply *allow* to run the tool or *block* to deny it.", thread_ts=thread_ts)
+                    return
+                tool_key = f"tool_approval:{info['execution_id']}:{info['call_id']}"
+                await r.lpush(tool_key, json.dumps(decision))
+                await r.expire(tool_key, 60)
+                await r.delete(tool_lookup_key)
+                await say(
+                    text="✅ Tool allowed — continuing." if decision["approved"] else "🛑 Tool blocked.",
+                    thread_ts=thread_ts,
+                )
+                return
+
+            # Fall through to checkpoint approval
+            checkpoint_lookup_key = f"slack_approval:{channel_id}:{thread_ts}"
+            raw = await r.get(checkpoint_lookup_key)
             if not raw:
                 return
             info = json.loads(raw)
-            text = (event.get("text") or "").lower()
             if any(w in text for w in ("reject", "deny", "decline", "stop", "cancel", "no")):
                 decision = {"approved": False, "reason": event.get("text", "")}
             elif any(w in text for w in ("approve", "approved", "yes", "lgtm", "ok", "go ahead", "proceed")):
@@ -64,7 +87,7 @@ async def start_socket_handler() -> None:
                 return
             approval_key = f"approval:{info['execution_id']}:{info['node_id']}"
             await r.lpush(approval_key, json.dumps(decision))
-            await r.delete(lookup_key)
+            await r.delete(checkpoint_lookup_key)
             await say(
                 text="✅ Approved — continuing." if decision["approved"] else "🛑 Rejected — stopping.",
                 thread_ts=thread_ts,
@@ -193,6 +216,53 @@ async def start_socket_handler() -> None:
             )
         except Exception as e:
             logger.exception("Error handling reject action: %s", e)
+
+    # ── Block Kit tool-call approval actions ──────────────────────────────────
+    @slack_app.action("tool_approve")
+    async def handle_tool_approve_action(ack, body, client):
+        await ack()
+        try:
+            import json
+            import redis.asyncio as aioredis
+            value = json.loads(body["actions"][0]["value"])
+            r = aioredis.from_url(settings.REDIS_URL)
+            try:
+                key = f"tool_approval:{value['execution_id']}:{value['call_id']}"
+                await r.lpush(key, json.dumps({"approved": True, "reason": "Allowed via Slack button"}))
+                await r.expire(key, 60)
+            finally:
+                await r.aclose()
+            await client.chat_update(
+                channel=body["container"]["channel_id"],
+                ts=body["container"]["message_ts"],
+                blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": "✅ *Tool allowed* — agent continuing…"}}],
+                text="Tool allowed",
+            )
+        except Exception as e:
+            logger.exception("Error handling tool_approve action: %s", e)
+
+    @slack_app.action("tool_reject")
+    async def handle_tool_reject_action(ack, body, client):
+        await ack()
+        try:
+            import json
+            import redis.asyncio as aioredis
+            value = json.loads(body["actions"][0]["value"])
+            r = aioredis.from_url(settings.REDIS_URL)
+            try:
+                key = f"tool_approval:{value['execution_id']}:{value['call_id']}"
+                await r.lpush(key, json.dumps({"approved": False, "reason": "Blocked via Slack button"}))
+                await r.expire(key, 60)
+            finally:
+                await r.aclose()
+            await client.chat_update(
+                channel=body["container"]["channel_id"],
+                ts=body["container"]["message_ts"],
+                blocks=[{"type": "section", "text": {"type": "mrkdwn", "text": "🛑 *Tool blocked* — agent received rejection."}}],
+                text="Tool blocked",
+            )
+        except Exception as e:
+            logger.exception("Error handling tool_reject action: %s", e)
 
     global _handler
     _handler = AsyncSocketModeHandler(slack_app, settings.SLACK_APP_TOKEN)

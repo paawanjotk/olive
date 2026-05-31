@@ -26,6 +26,10 @@ class AgentConfig:
     soul_md: Optional[str] = None
     memory_md: Optional[str] = None
     name: Optional[str] = None
+    # Human-in-the-loop tool approval
+    approval_tools: list[str] = field(default_factory=list)  # tool names that need approval
+    tool_approval_mode: str = "web"  # "web" | "slack" | "both"
+    tool_approval_timeout: int = 120  # seconds before auto-approve on timeout
 
     @property
     def effective_system_prompt(self) -> str:
@@ -47,7 +51,7 @@ class AgentConfig:
         from app.core.llm.manager import SYSTEM_PROMPT
         return cls(
             system_prompt=SYSTEM_PROMPT,
-            tools=AVAILABLE_TOOLS + ["list_workflows", "run_workflow", "get_workflow_status"],
+            tools=AVAILABLE_TOOLS + ["list_workflows", "run_workflow", "get_workflow_status", "pause_execution", "resume_execution", "terminate_execution"],
         )
 
     @classmethod

@@ -79,9 +79,28 @@ async def _finish_step(step_id: uuid.UUID, status: str, output: dict, error: str
         await db.commit()
 
 
+async def _persist_event(execution_id: str, step_id: uuid.UUID, event_type: str, payload: dict) -> None:
+    """Fire-and-forget: write one event row to execution_events for trace history."""
+    try:
+        from app.db.models.workflows import ExecutionEvent
+        async with get_session_factory()() as db:
+            db.add(ExecutionEvent(
+                execution_id=uuid.UUID(execution_id),
+                step_id=step_id,
+                event_type=event_type,
+                payload=payload,
+            ))
+            await db.commit()
+    except Exception:
+        pass  # telemetry must never kill the run
+
+
 async def _run_agent(
     config: AgentConfig, prompt: str, node_id: str, bus: EventBus,
     cancel_event: asyncio.Event | None = None,
+    execution_id: str | None = None,
+    trigger_context: dict | None = None,
+    step_id: uuid.UUID | None = None,
 ) -> str:
     """Drive run_agent_turn, streaming chunks/tool events over the bus, return text."""
     messages = [{"role": "user", "content": prompt}]
@@ -90,21 +109,40 @@ async def _run_agent(
         messages=messages,
         agent_config=config,
         session_id=None, user_id=None, conversation_id=None, cancel_event=cancel_event,
+        execution_id=execution_id, trigger_context=trigger_context,
     ):
-        if cancel_event and cancel_event.is_set():
-            break  # signal arrived mid-run — stop collecting, raise below
         etype = event.get("type")
         if etype == "chunk":
+            # Collect BEFORE checking cancel so no text is silently dropped
+            # if the watcher sets cancel_event mid-synthesis-stream.
             collected.append(event["content"])
             await bus.publish("chunk", node_id=node_id, content=event["content"])
         elif etype == "tool_start":
             await bus.publish("tool_start", node_id=node_id,
                               tool_name=event.get("tool_name"), tool_input=event.get("tool_input"))
+            if execution_id and step_id:
+                asyncio.create_task(_persist_event(execution_id, step_id, "tool_start", {
+                    "tool_name": event.get("tool_name", ""),
+                    "tool_input": event.get("tool_input") or {},
+                }))
+        elif etype == "tool_approval_requested":
+            await bus.publish("tool_approval_requested", node_id=node_id,
+                              tool_name=event.get("tool_name"),
+                              tool_input=event.get("tool_input"),
+                              call_id=event.get("call_id"))
         elif etype == "tool_end":
             await bus.publish("tool_end", node_id=node_id,
                               tool_name=event.get("tool_name"), tool_result=event.get("tool_result"))
+            if execution_id and step_id:
+                result_raw = event.get("tool_result", "")
+                asyncio.create_task(_persist_event(execution_id, step_id, "tool_end", {
+                    "tool_name": event.get("tool_name", ""),
+                    "tool_result": str(result_raw)[:5000],
+                }))
         elif etype == "provider_fallback":
             await bus.publish("provider_fallback", node_id=node_id, to=event.get("to"))
+        if cancel_event and cancel_event.is_set():
+            break  # break AFTER processing so the last chunk/event isn't lost
     return "".join(collected)
 
 
@@ -173,6 +211,8 @@ def _apply_node_overrides(base_config: AgentConfig, node_data: dict) -> AgentCon
         ("max_iterations", "max_iterations"),
         ("soul_md", "soul_md"),
         ("memory_md", "memory_md"),
+        ("tool_approval_mode", "tool_approval_mode"),
+        ("tool_approval_timeout", "tool_approval_timeout"),
     ]:
         val = node_data.get(key)
         if val is not None and val != "":
@@ -181,6 +221,10 @@ def _apply_node_overrides(base_config: AgentConfig, node_data: dict) -> AgentCon
     tools = node_data.get("tools")
     if isinstance(tools, list) and tools:
         overrides["tools"] = tools
+    # approval_tools override
+    approval_tools = node_data.get("approval_tools")
+    if isinstance(approval_tools, list):
+        overrides["approval_tools"] = approval_tools
     return replace(base_config, **overrides) if overrides else base_config
 
 
@@ -227,7 +271,9 @@ def make_agent_node(
 
         try:
             output = await _run_with_retry(
-                lambda: _run_agent(config, prompt, node_id, bus, cancel_event),
+                lambda: _run_agent(config, prompt, node_id, bus, cancel_event,
+                                   execution_id=execution_id, trigger_context=trigger_context,
+                                   step_id=step_id),
                 node_id=node_id, bus=bus, max_retries=max_retries,
             )
             # If the watcher set cancel_event during the run, raise the right signal now.

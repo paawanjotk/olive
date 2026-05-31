@@ -5,11 +5,12 @@ import {
   ReactFlow, ReactFlowProvider, Background, type Edge, type Node,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { ArrowLeft, Coins, Hash, CheckCircle2, XCircle, Loader2, ShieldCheck, ThumbsUp, ThumbsDown, Pause, Square, RotateCcw } from 'lucide-react'
+import { ArrowLeft, Coins, Hash, CheckCircle2, XCircle, Loader2, ShieldCheck, ThumbsUp, ThumbsDown, Pause, Square, RotateCcw, Wrench } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { graphToFlow } from '@/lib/workflowGraph'
 import { useExecutionStream } from '@/hooks/useExecutionStream'
-import { approveCheckpoint, pauseExecution, resumeExecution, terminateExecution } from '@/lib/api'
+import type { PendingToolApproval } from '@/hooks/useExecutionStream'
+import { approveCheckpoint, approveToolCall, pauseExecution, resumeExecution, terminateExecution } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Workflow } from '@/lib/types'
 
@@ -155,6 +156,14 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
             )}
           </div>
 
+          {/* Tool approval panel — shown inline when a tool call needs human review */}
+          {stream.pendingToolApproval && (
+            <ToolApprovalPanel
+              approval={stream.pendingToolApproval}
+              executionId={executionId}
+            />
+          )}
+
           {/* Event log */}
           <div className="h-[40%] flex-shrink-0 overflow-y-auto p-4">
             <p className="text-[10px] uppercase tracking-wide text-white/40 mb-2">Event log</p>
@@ -211,8 +220,74 @@ function logColor(kind: string): string {
   if (kind === 'node_failed' || kind === 'execution_failed') return 'text-red-300/90'
   if (kind === 'execution_completed' || kind === 'node_completed') return 'text-emerald-300/80'
   if (kind === 'tool_start' || kind === 'tool_end') return 'text-sky-300/80'
+  if (kind === 'tool_approval_requested') return 'text-yellow-300/90'
   if (kind === 'output_sent' || kind === 'approval_requested') return 'text-violet-300/80'
   return 'text-white/55'
+}
+
+function ToolApprovalPanel({
+  approval,
+  executionId,
+}: {
+  approval: PendingToolApproval
+  executionId: string
+}) {
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(false)
+
+  const decide = async (approved: boolean) => {
+    if (busy || done) return
+    setBusy(true)
+    try {
+      await approveToolCall(executionId, approval.callId, approved)
+      setDone(true)
+    } catch (e) {
+      console.error('Tool approval failed:', e)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex-shrink-0 border-t border-yellow-500/25 bg-yellow-500/[0.05] px-4 py-3">
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className="w-6 h-6 rounded-md bg-yellow-500/15 flex items-center justify-center">
+          <Wrench size={12} className="text-yellow-300" />
+        </div>
+        <span className="text-yellow-300 text-[11px] font-semibold uppercase tracking-wider">Tool approval required</span>
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-white/50 text-xs">Tool:</span>
+        <code className="text-white/85 text-xs bg-white/[0.08] px-1.5 py-0.5 rounded font-mono">{approval.toolName}</code>
+      </div>
+      {Object.keys(approval.toolInput).length > 0 && (
+        <pre className="text-white/55 text-[11px] bg-white/[0.04] border border-white/[0.06] rounded-lg p-2.5 overflow-auto max-h-28 mb-3 leading-relaxed">
+          {JSON.stringify(approval.toolInput, null, 2)}
+        </pre>
+      )}
+      {done ? (
+        <p className="text-center text-xs text-yellow-300/80 py-1">Response sent…</p>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            onClick={() => decide(false)}
+            disabled={busy}
+            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors disabled:opacity-40"
+          >
+            <XCircle size={12} /> Block
+          </button>
+          <button
+            onClick={() => decide(true)}
+            disabled={busy}
+            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 border border-emerald-500/20 transition-colors disabled:opacity-40"
+          >
+            {busy ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={12} />}
+            Allow
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function ApprovalOverlay({

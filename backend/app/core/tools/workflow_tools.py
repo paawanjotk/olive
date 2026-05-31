@@ -81,6 +81,54 @@ async def tool_run_workflow(workflow_id: str, input_text: str = "", **_) -> str:
         return json.dumps({"error": str(e)})
 
 
+async def tool_pause_execution(execution_id: str, **_) -> str:
+    """Pause a running workflow execution."""
+    user_id_str = get_tool_user_id()
+    if not user_id_str:
+        return json.dumps({"error": "No user context available"})
+    try:
+        from app.services.execution_control import pause_execution
+        result = await pause_execution(execution_id, uuid.UUID(user_id_str))
+        if "error" in result:
+            return json.dumps(result)
+        return json.dumps({"execution_id": execution_id, "status": "pausing", "message": "Pause signal sent. The execution will pause at the next safe checkpoint."})
+    except Exception as e:
+        logger.exception("tool_pause_execution failed")
+        return json.dumps({"error": str(e)})
+
+
+async def tool_resume_execution(execution_id: str, **_) -> str:
+    """Resume a paused workflow execution."""
+    user_id_str = get_tool_user_id()
+    if not user_id_str:
+        return json.dumps({"error": "No user context available"})
+    try:
+        from app.services.execution_control import resume_execution
+        result = await resume_execution(execution_id, uuid.UUID(user_id_str))
+        if "error" in result:
+            return json.dumps(result)
+        return json.dumps({"execution_id": execution_id, "status": "running", "message": "Execution resumed successfully."})
+    except Exception as e:
+        logger.exception("tool_resume_execution failed")
+        return json.dumps({"error": str(e)})
+
+
+async def tool_terminate_execution(execution_id: str, **_) -> str:
+    """Terminate (stop) a running or paused workflow execution immediately."""
+    user_id_str = get_tool_user_id()
+    if not user_id_str:
+        return json.dumps({"error": "No user context available"})
+    try:
+        from app.services.execution_control import terminate_execution
+        result = await terminate_execution(execution_id, uuid.UUID(user_id_str))
+        if "error" in result:
+            return json.dumps(result)
+        return json.dumps({"execution_id": execution_id, "status": "cancelled", "message": "Terminate signal sent. The execution will stop shortly."})
+    except Exception as e:
+        logger.exception("tool_terminate_execution failed")
+        return json.dumps({"error": str(e)})
+
+
 async def tool_get_workflow_status(execution_id: str, **_) -> str:
     """Get the current status and result of a workflow execution."""
     user_id_str = get_tool_user_id()

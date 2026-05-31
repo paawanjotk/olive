@@ -330,6 +330,7 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
 const AVAILABLE_TOOLS = [
   'web_search', 'calculator', 'get_datetime',
   'list_workflows', 'run_workflow', 'get_workflow_status',
+  'pause_execution', 'resume_execution', 'terminate_execution',
 ]
 
 const MODEL_OPTIONS = [

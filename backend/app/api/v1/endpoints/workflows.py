@@ -16,6 +16,7 @@ from app.db.base import get_session_factory
 from app.dependencies.auth import get_current_user, verify_websocket_token
 from app.schemas.workflows import (
     ExecuteWorkflowRequest,
+    ExecutionTraceResponse,
     ExecutionWithWorkflowResponse,
     WorkflowCreate,
     WorkflowExecutionResponse,
@@ -31,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 class ApproveCheckpointRequest(BaseModel):
     node_id: str
+    approved: bool = True
+    reason: str = ""
+
+
+class ApproveToolCallRequest(BaseModel):
+    call_id: str
     approved: bool = True
     reason: str = ""
 
@@ -103,6 +110,20 @@ async def list_steps(
     return await workflow_service.list_steps(db, execution_id)
 
 
+@router.get("/executions/{execution_id}/trace", response_model=ExecutionTraceResponse)
+async def get_execution_trace(
+    execution_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the full trace tree for a completed or in-progress execution:
+    execution metadata, per-node spans with timing/token/cost, and input/output JSON."""
+    trace = await workflow_service.get_execution_trace(db, execution_id, _uid(current_user))
+    if trace is None:
+        raise HTTPException(status_code=404, detail="Execution not found")
+    return trace
+
+
 @router.get("/executions/{execution_id}/stream")
 async def stream_execution(
     execution_id: uuid.UUID,
@@ -160,6 +181,22 @@ async def approve_checkpoint(
 ):
     """Signal approval or rejection for a blocking human checkpoint."""
     approval_key = f"approval:{execution_id}:{body.node_id}"
+    r = aioredis.from_url(settings.REDIS_URL)
+    try:
+        await r.lpush(approval_key, json.dumps({"approved": body.approved, "reason": body.reason}))
+        await r.expire(approval_key, 60)
+    finally:
+        await r.aclose()
+
+
+@router.post("/executions/{execution_id}/approve_tool", status_code=204)
+async def approve_tool_call(
+    execution_id: uuid.UUID,
+    body: ApproveToolCallRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """Signal approval or rejection for a pending tool-call that requires human review."""
+    approval_key = f"tool_approval:{execution_id}:{body.call_id}"
     r = aioredis.from_url(settings.REDIS_URL)
     try:
         await r.lpush(approval_key, json.dumps({"approved": body.approved, "reason": body.reason}))

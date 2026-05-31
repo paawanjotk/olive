@@ -2,304 +2,143 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import {
-  Activity, RefreshCw, Loader2, AlertCircle, Clock, CheckCircle2,
-  XCircle, Pause, ChevronRight, BarChart2, ArrowLeft, Play, Square, RotateCcw,
+  Activity, RefreshCw, Loader2, AlertCircle, CheckCircle2,
+  XCircle, Pause, Square, ChevronRight, Play,
+  Clock, Zap, MessageSquare,
 } from 'lucide-react'
-import { listAllExecutions, getExecutionSteps, approveCheckpoint, pauseExecution, resumeExecution, terminateExecution } from '@/lib/api'
-import type { ExecutionWithWorkflow, WorkflowStep } from '@/lib/types'
+import { listAllExecutions } from '@/lib/api'
+import type { ExecutionWithWorkflow } from '@/lib/types'
 import { cn } from '@/lib/utils'
-import { useExecutionStream } from '@/hooks/useExecutionStream'
+import TraceView from './TraceView'
 
-// ── Status helpers ─────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { icon: React.ElementType; color: string; label: string }> = {
-    running:   { icon: Loader2,      color: 'text-blue-400 bg-blue-400/10',       label: 'Running' },
-    completed: { icon: CheckCircle2, color: 'text-emerald-400 bg-emerald-400/10', label: 'Completed' },
-    failed:    { icon: XCircle,      color: 'text-red-400 bg-red-400/10',          label: 'Failed' },
-    pending:   { icon: Clock,        color: 'text-yellow-400 bg-yellow-400/10',    label: 'Pending' },
-    paused:    { icon: Pause,        color: 'text-orange-400 bg-orange-400/10',    label: 'Paused' },
-    cancelled: { icon: Square,       color: 'text-white/40 bg-white/[0.06]',       label: 'Cancelled' },
-  }
-  const { icon: Icon, color, label } = map[status] ?? map.pending
+function fmtMs(start: string | null, end: string | null): string {
+  if (!start) return '—'
+  const ms = (end ? new Date(end) : new Date()).getTime() - new Date(start).getTime()
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`
+}
+
+function fmtTime(ts: string | null): string {
+  if (!ts) return '—'
+  const d = new Date(ts)
+  return d.toLocaleString('en-US', {
+    month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+}
+
+// ── Status indicator ──────────────────────────────────────────────────────────
+
+const STATUS: Record<string, { color: string; dot: string; icon: React.ElementType; label: string }> = {
+  running:   { color: 'text-blue-400',    dot: 'bg-blue-400 animate-pulse',   icon: Loader2,      label: 'Running' },
+  completed: { color: 'text-emerald-400', dot: 'bg-emerald-400',              icon: CheckCircle2, label: 'Completed' },
+  failed:    { color: 'text-red-400',     dot: 'bg-red-400',                  icon: XCircle,      label: 'Failed' },
+  pending:   { color: 'text-yellow-400',  dot: 'bg-yellow-400',               icon: Clock,        label: 'Pending' },
+  paused:    { color: 'text-orange-400',  dot: 'bg-orange-400',               icon: Pause,        label: 'Paused' },
+  cancelled: { color: 'text-white/30',    dot: 'bg-white/20',                 icon: Square,       label: 'Cancelled' },
+}
+
+function StatusPill({ status }: { status: string }) {
+  const s = STATUS[status] ?? STATUS.pending
+  const Icon = s.icon
   return (
-    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium', color)}>
+    <span className={cn('inline-flex items-center gap-1 text-[10px] font-medium', s.color)}>
       <Icon size={10} className={status === 'running' ? 'animate-spin' : ''} />
-      {label}
+      {s.label}
     </span>
   )
 }
 
-function TriggerBadge({ trigger }: { trigger: string }) {
-  const colors: Record<string, string> = {
-    manual:   'text-white/40 bg-white/[0.04]',
-    slack:    'text-purple-400 bg-purple-400/10',
-    telegram: 'text-sky-400 bg-sky-400/10',
-    chat:     'text-orange-400 bg-orange-400/10',
-    schedule: 'text-teal-400 bg-teal-400/10',
+const TRIGGER_STYLE: Record<string, string> = {
+  manual:   'text-white/35 bg-white/[0.05] border-white/[0.06]',
+  slack:    'text-purple-400 bg-purple-400/10 border-purple-400/20',
+  telegram: 'text-sky-400 bg-sky-400/10 border-sky-400/20',
+  chat:     'text-orange-400 bg-orange-400/10 border-orange-400/20',
+  schedule: 'text-teal-400 bg-teal-400/10 border-teal-400/20',
+}
+
+function TriggerPill({ trigger }: { trigger: string }) {
+  const icons: Record<string, React.ElementType> = {
+    manual: Zap, slack: MessageSquare, telegram: MessageSquare,
+    chat: MessageSquare, schedule: Clock,
   }
+  const Icon = icons[trigger] ?? Zap
   return (
-    <span className={cn('px-2 py-0.5 rounded text-[10px] font-mono border border-white/[0.04]', colors[trigger] ?? colors.manual)}>
+    <span className={cn('inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-mono uppercase tracking-wide', TRIGGER_STYLE[trigger] ?? TRIGGER_STYLE.manual)}>
+      <Icon size={9} />
       {trigger}
     </span>
   )
 }
 
-function fmtDuration(start: string | null, end: string | null): string {
-  if (!start) return '—'
-  const s = new Date(start).getTime()
-  const e = end ? new Date(end).getTime() : Date.now()
-  const ms = e - s
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`
-  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`
-}
+// ── Stat card ─────────────────────────────────────────────────────────────────
 
-function fmtTime(ts: string | null): string {
-  if (!ts) return '—'
-  return new Date(ts).toLocaleString('en-US', {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-  })
-}
-
-// ── Execution Detail ───────────────────────────────────────────────────────────
-
-function ExecutionDetail({
-  execution,
-  onBack,
-  onRefresh,
-}: {
-  execution: ExecutionWithWorkflow
-  onBack: () => void
-  onRefresh: (id: string) => void
+function StatCard({ label, value, color, icon: Icon }: {
+  label: string; value: string | number; color: string; icon: React.ElementType
 }) {
-  const [steps, setSteps] = useState<WorkflowStep[]>([])
-  const [loadingSteps, setLoadingSteps] = useState(true)
-  const [approving, setApproving] = useState(false)
-  const [controlling, setControlling] = useState(false)
-
-  const streamState = useExecutionStream(
-    execution.status === 'running' ? execution.id : null
-  )
-
-  const { nodeStatus, totalCost, totalTokens, logs, pendingApproval } = streamState
-
-  useEffect(() => {
-    getExecutionSteps(execution.id)
-      .then(setSteps)
-      .catch(() => {})
-      .finally(() => setLoadingSteps(false))
-  }, [execution.id])
-
-  const handleApprove = async (approved: boolean) => {
-    if (!pendingApproval) return
-    setApproving(true)
-    try {
-      await approveCheckpoint(execution.id, pendingApproval.nodeId, approved)
-    } finally {
-      setApproving(false)
-    }
-  }
-
-  const handleControl = async (action: 'pause' | 'resume' | 'terminate') => {
-    setControlling(true)
-    try {
-      if (action === 'pause') await pauseExecution(execution.id)
-      else if (action === 'resume') await resumeExecution(execution.id)
-      else await terminateExecution(execution.id)
-      onRefresh(execution.id)
-    } catch (e) {
-      console.error('Control action failed:', e)
-    } finally {
-      setControlling(false)
-    }
-  }
-
-  const output = execution.output_data?.output || ''
-  const combinedCost = totalCost || (steps.reduce((acc, s) => acc + ((s.output?.usage?.cost_usd) || 0), 0))
-  const combinedTokens = totalTokens || (steps.reduce((acc, s) => acc + ((s.output?.usage?.input_tokens || 0) + (s.output?.usage?.output_tokens || 0)), 0))
-
-  const isActive = execution.status === 'running' || execution.status === 'pending'
-  const isPaused = execution.status === 'paused'
-
   return (
-    <div className="flex flex-col h-full bg-[#0d0d0d]">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06]">
-        <button onClick={onBack} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06]">
-          <ArrowLeft size={16} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h2 className="text-white font-semibold text-sm truncate">{execution.workflow_name}</h2>
-            <StatusBadge status={execution.status} />
-            <TriggerBadge trigger={execution.trigger_type} />
-          </div>
-          <p className="text-white/35 text-xs mt-0.5 font-mono">{execution.id.slice(0, 16)}…</p>
-        </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {combinedTokens > 0 && <span className="text-xs font-mono text-white/40">{combinedTokens.toLocaleString()} tok</span>}
-          {combinedCost > 0 && <span className="text-xs font-mono text-emerald-400/70">${combinedCost.toFixed(5)}</span>}
-          <span className="text-xs text-white/40">{fmtDuration(execution.started_at, execution.completed_at)}</span>
-          {isActive && (
-            <button
-              onClick={() => handleControl('pause')}
-              disabled={controlling}
-              title="Pause at next node boundary"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 text-xs font-medium disabled:opacity-40"
-            >
-              <Pause size={12} /> Pause
-            </button>
-          )}
-          {isPaused && (
-            <button
-              onClick={() => handleControl('resume')}
-              disabled={controlling}
-              title="Resume from where it paused"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40"
-            >
-              <RotateCcw size={12} /> Resume
-            </button>
-          )}
-          {(execution.status === 'failed') && (
-            <button
-              onClick={() => handleControl('resume')}
-              disabled={controlling}
-              title="Retry — completed steps are skipped"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 text-xs font-medium disabled:opacity-40"
-            >
-              <RotateCcw size={12} /> Retry
-            </button>
-          )}
-          {(isActive || isPaused) && (
-            <button
-              onClick={() => handleControl('terminate')}
-              disabled={controlling}
-              title="Stop immediately and cancel"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs font-medium disabled:opacity-40"
-            >
-              <Square size={12} /> Stop
-            </button>
-          )}
-        </div>
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111] p-4">
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon size={11} className={color} />
+        <span className="text-[10px] text-white/35 uppercase tracking-wide">{label}</span>
       </div>
-
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {/* Approval card */}
-        {pendingApproval && (
-          <div className="mx-6 mt-4 rounded-xl border border-yellow-500/30 bg-yellow-500/5 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Pause size={14} className="text-yellow-400" />
-              <span className="text-yellow-400 text-sm font-medium">Awaiting approval</span>
-            </div>
-            {pendingApproval.preview && (
-              <pre className="text-white/60 text-xs bg-white/[0.03] rounded-lg p-3 mb-3 overflow-auto max-h-32 whitespace-pre-wrap font-mono">
-                {pendingApproval.preview}
-              </pre>
-            )}
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleApprove(true)}
-                disabled={approving}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 text-sm font-medium disabled:opacity-50"
-              >
-                <CheckCircle2 size={14} /> Approve
-              </button>
-              <button
-                onClick={() => handleApprove(false)}
-                disabled={approving}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-sm font-medium disabled:opacity-50"
-              >
-                <XCircle size={14} /> Reject
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Steps timeline */}
-        <div className="px-6 py-4">
-          <h3 className="text-xs font-medium text-white/40 uppercase tracking-wide mb-3">Node Timeline</h3>
-          {loadingSteps ? (
-            <div className="flex justify-center py-6"><Loader2 size={16} className="animate-spin text-white/20" /></div>
-          ) : steps.length === 0 && logs.length === 0 ? (
-            <p className="text-white/25 text-sm py-4">No steps recorded yet</p>
-          ) : (
-            <div className="space-y-2">
-              {steps.map((step) => {
-                const live = nodeStatus[step.node_id]
-                const status = live || step.status
-                const outputText = (step.output?.text || '').slice(0, 300)
-                return (
-                  <div key={step.id} className="rounded-xl border border-white/[0.06] bg-[#141414] p-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <StatusBadge status={status} />
-                      <span className="text-white text-sm font-medium flex-1">{step.node_id}</span>
-                      <span className="text-white/30 text-xs font-mono">
-                        {fmtDuration(step.started_at, step.completed_at)}
-                      </span>
-                      {step.output?.usage && (
-                        <span className="text-white/25 text-[10px] font-mono">
-                          {(step.output.usage.input_tokens || 0) + (step.output.usage.output_tokens || 0)} tok
-                        </span>
-                      )}
-                    </div>
-                    {outputText && (
-                      <pre className="text-white/45 text-xs bg-white/[0.02] rounded-lg p-2 mt-2 overflow-auto max-h-24 whitespace-pre-wrap font-mono leading-relaxed">
-                        {outputText}{outputText.length < (step.output?.text || '').length ? '…' : ''}
-                      </pre>
-                    )}
-                    {step.error_message && (
-                      <p className="text-red-400/70 text-xs mt-1 font-mono">{step.error_message}</p>
-                    )}
-                  </div>
-                )
-              })}
-              {/* Live log entries not yet in DB */}
-              {logs
-                .filter((l) => !steps.some((s) => s.node_id === l.nodeId && l.kind === 'node_completed'))
-                .map((log, i) => (
-                  <div key={i} className="rounded-xl border border-white/[0.04] bg-[#111] p-3 opacity-70">
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        'w-1.5 h-1.5 rounded-full',
-                        log.kind === 'node_started' ? 'bg-blue-400 animate-pulse'
-                          : log.kind === 'node_completed' ? 'bg-emerald-400'
-                          : 'bg-red-400'
-                      )} />
-                      <span className="text-white/60 text-xs font-mono">{log.nodeId}</span>
-                      <span className="text-white/25 text-[10px]">{log.kind}</span>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          )}
-        </div>
-
-        {/* Output */}
-        {output && (
-          <div className="px-6 pb-6">
-            <h3 className="text-xs font-medium text-white/40 uppercase tracking-wide mb-3">Final Output</h3>
-            <div className="rounded-xl border border-white/[0.06] bg-[#141414] p-4">
-              <pre className="text-white/75 text-sm whitespace-pre-wrap leading-relaxed font-mono">{output}</pre>
-            </div>
-          </div>
-        )}
-
-        {/* Error */}
-        {execution.error_message && (
-          <div className="px-6 pb-6">
-            <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-              <p className="text-red-400 text-sm font-mono">{execution.error_message}</p>
-            </div>
-          </div>
-        )}
-      </div>
+      <p className={cn('text-2xl font-mono font-light tracking-tight', color)}>{value}</p>
     </div>
   )
 }
 
-// ── Main Panel ─────────────────────────────────────────────────────────────────
+// ── Execution row ─────────────────────────────────────────────────────────────
+
+function ExRow({ ex, onClick }: { ex: ExecutionWithWorkflow; onClick: () => void }) {
+  const s = STATUS[ex.status] ?? STATUS.pending
+  const inputText = (ex.input_data?.input as string | undefined) ?? ''
+  const isActive = ex.status === 'running' || ex.status === 'pending'
+
+  return (
+    <button
+      onClick={onClick}
+      className="w-full group text-left rounded-2xl border border-white/[0.06] bg-[#0f0f0f] hover:bg-[#141414] hover:border-white/[0.10] transition-all duration-150 overflow-hidden"
+    >
+      <div className="flex items-start gap-4 px-5 py-4">
+        {/* Status dot */}
+        <div className="mt-0.5 shrink-0">
+          <span className={cn('block w-2 h-2 rounded-full', s.dot)} />
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="text-white text-sm font-semibold">{ex.workflow_name}</span>
+            <StatusPill status={ex.status} />
+            <TriggerPill trigger={ex.trigger_type} />
+          </div>
+          {inputText && (
+            <p className="text-white/35 text-xs truncate mt-0.5 max-w-md">{inputText}</p>
+          )}
+          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+            <span className="text-white/20 text-[10px] font-mono">{ex.id.slice(0, 16)}…</span>
+            <span className="text-white/25 text-[10px]">{fmtTime(ex.created_at)}</span>
+            {(ex.started_at) && (
+              <span className="text-white/20 text-[10px]">
+                {isActive ? '⏱ ' : ''}{fmtMs(ex.started_at, ex.completed_at)}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Right side */}
+        <div className="flex items-center gap-3 shrink-0">
+          <ChevronRight size={13} className="text-white/15 group-hover:text-white/40 transition-colors" />
+        </div>
+      </div>
+    </button>
+  )
+}
+
+// ── Main panel ────────────────────────────────────────────────────────────────
 
 export default function MonitoringPanel() {
   const [executions, setExecutions] = useState<ExecutionWithWorkflow[]>([])
@@ -320,121 +159,93 @@ export default function MonitoringPanel() {
     }
   }, [])
 
-  useEffect(() => {
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   useEffect(() => {
     if (!autoRefresh) return
-    const iv = setInterval(() => {
-      load()
-    }, 4000)
+    const iv = setInterval(load, 4000)
     return () => clearInterval(iv)
   }, [autoRefresh, load])
 
   if (selected) {
     return (
-      <ExecutionDetail
+      <TraceView
         execution={selected}
         onBack={() => { setSelected(null); load() }}
-        onRefresh={() => load()}
+        onRefresh={load}
       />
     )
   }
 
-  const running   = executions.filter((e) => ['running', 'pending', 'paused'].includes(e.status))
+  const running   = executions.filter((e) => ['running', 'pending'].includes(e.status))
   const completed = executions.filter((e) => e.status === 'completed')
-  const failed    = executions.filter((e) => e.status === 'failed' || e.status === 'cancelled')
-  const totalCost = executions.reduce((acc, e) => acc + (((e.output_data as Record<string, unknown>)?.cost_usd as number) || 0), 0)
+  const failed    = executions.filter((e) => ['failed', 'cancelled'].includes(e.status))
+  const paused    = executions.filter((e) => e.status === 'paused')
 
   return (
-    <div className="flex flex-col h-full bg-[#0d0d0d] overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-8 py-8 w-full">
+    <div className="flex flex-col h-full bg-[#0a0a0a] overflow-y-auto">
+      <div className="max-w-3xl mx-auto px-6 py-8 w-full">
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-2.5">
-            <Activity size={18} className="text-white/60" />
-            <h1 className="text-white font-semibold text-lg">Monitoring</h1>
+            <Activity size={16} className="text-white/50" />
+            <h1 className="text-white font-semibold text-base">Workflow Runs</h1>
+            <span className="text-white/20 text-xs font-mono border border-white/[0.08] px-2 py-0.5 rounded-full">
+              {executions.length}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setAutoRefresh((v) => !v)}
               className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs',
-                autoRefresh ? 'bg-white/[0.08] text-white' : 'text-white/40 hover:text-white hover:bg-white/[0.06]'
+                'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] transition-colors',
+                autoRefresh
+                  ? 'bg-white/[0.07] text-white/70'
+                  : 'text-white/30 hover:text-white/60 hover:bg-white/[0.05]',
               )}
             >
-              <RefreshCw size={12} className={autoRefresh ? 'animate-spin' : ''} />
-              Auto-refresh
+              <RefreshCw size={11} className={autoRefresh ? 'animate-spin' : ''} />
+              Live
             </button>
             <button
               onClick={load}
-              className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06]"
+              className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.05] transition-colors"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={13} />
             </button>
           </div>
         </div>
 
-        {/* Stats row */}
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          {[
-            { label: 'Running',    value: running.length,             color: 'text-blue-400',    icon: Play },
-            { label: 'Completed',  value: completed.length,           color: 'text-emerald-400', icon: CheckCircle2 },
-            { label: 'Failed',     value: failed.length,              color: 'text-red-400',     icon: XCircle },
-            { label: 'Total cost', value: `$${totalCost.toFixed(4)}`, color: 'text-white/60',    icon: BarChart2 },
-          ].map(({ label, value, color, icon: Icon }) => (
-            <div key={label} className="rounded-xl border border-white/[0.06] bg-[#141414] p-3">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Icon size={12} className={color} />
-                <span className="text-white/40 text-xs">{label}</span>
-              </div>
-              <p className={cn('text-xl font-mono font-semibold', color)}>{value}</p>
-            </div>
-          ))}
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-3 mb-8">
+          <StatCard label="Active"    value={running.length}   color="text-blue-400"    icon={Play} />
+          <StatCard label="Completed" value={completed.length} color="text-emerald-400" icon={CheckCircle2} />
+          <StatCard label="Failed"    value={failed.length}    color="text-red-400"     icon={XCircle} />
+          <StatCard label="Paused"    value={paused.length}    color="text-orange-400"  icon={Pause} />
         </div>
 
-        {/* Executions list */}
+        {/* List */}
         {loading ? (
-          <div className="flex justify-center py-16"><Loader2 size={20} className="animate-spin text-white/20" /></div>
+          <div className="flex justify-center py-20">
+            <Loader2 size={18} className="animate-spin text-white/15" />
+          </div>
         ) : error ? (
-          <div className="flex flex-col items-center gap-2 py-12">
-            <AlertCircle size={18} className="text-red-400/60" />
-            <p className="text-sm text-white/40">{error}</p>
-            <button onClick={load} className="text-xs text-white/50 underline">Retry</button>
+          <div className="flex flex-col items-center gap-3 py-16">
+            <AlertCircle size={16} className="text-red-400/50" />
+            <p className="text-white/30 text-sm">{error}</p>
+            <button onClick={load} className="text-xs text-white/40 underline underline-offset-2">Retry</button>
           </div>
         ) : executions.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-white/[0.08] py-16 text-center">
-            <Activity size={24} className="text-white/15 mx-auto mb-3" />
-            <p className="text-white/30 text-sm">No executions yet</p>
-            <p className="text-white/15 text-xs mt-1">Run a workflow to see it here</p>
+          <div className="rounded-2xl border border-dashed border-white/[0.07] py-20 text-center">
+            <Activity size={22} className="text-white/10 mx-auto mb-3" />
+            <p className="text-white/25 text-sm">No workflow runs yet</p>
+            <p className="text-white/12 text-xs mt-1">Execute a workflow to see traces here</p>
           </div>
         ) : (
           <div className="space-y-2">
             {executions.map((ex) => (
-              <button
-                key={ex.id}
-                onClick={() => setSelected(ex)}
-                className="w-full group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-[#141414] px-4 py-3 hover:border-white/[0.12] hover:bg-[#1a1a1a] transition-colors text-left"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-white text-sm font-medium">{ex.workflow_name}</span>
-                    <StatusBadge status={ex.status} />
-                    <TriggerBadge trigger={ex.trigger_type} />
-                  </div>
-                  <div className="flex items-center gap-3 mt-1">
-                    <span className="text-white/25 text-[11px] font-mono">{ex.id.slice(0, 12)}…</span>
-                    <span className="text-white/30 text-[11px]">{fmtTime(ex.created_at)}</span>
-                    {(ex.started_at || ex.completed_at) && (
-                      <span className="text-white/25 text-[11px]">
-                        {fmtDuration(ex.started_at, ex.completed_at)}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <ChevronRight size={14} className="text-white/20 group-hover:text-white/50 flex-shrink-0" />
-              </button>
+              <ExRow key={ex.id} ex={ex} onClick={() => setSelected(ex)} />
             ))}
           </div>
         )}
