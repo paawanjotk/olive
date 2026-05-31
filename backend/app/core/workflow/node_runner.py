@@ -101,6 +101,7 @@ async def _run_agent(
     execution_id: str | None = None,
     trigger_context: dict | None = None,
     step_id: uuid.UUID | None = None,
+    user_id: str | None = None,
 ) -> str:
     """Drive run_agent_turn, streaming chunks/tool events over the bus, return text."""
     messages = [{"role": "user", "content": prompt}]
@@ -108,7 +109,7 @@ async def _run_agent(
     async for event in run_agent_turn(
         messages=messages,
         agent_config=config,
-        session_id=None, user_id=None, conversation_id=None, cancel_event=cancel_event,
+        session_id=None, user_id=user_id, conversation_id=None, cancel_event=cancel_event,
         execution_id=execution_id, trigger_context=trigger_context,
     ):
         etype = event.get("type")
@@ -273,11 +274,12 @@ def make_agent_node(
 
         watcher = asyncio.create_task(_watch_signal())
 
+        _user_id = str(agent.user_id) if getattr(agent, "user_id", None) else None
         try:
             output = await _run_with_retry(
                 lambda: _run_agent(config, prompt, node_id, bus, cancel_event,
                                    execution_id=execution_id, trigger_context=trigger_context,
-                                   step_id=step_id),
+                                   step_id=step_id, user_id=_user_id),
                 node_id=node_id, bus=bus, max_retries=max_retries,
             )
             # If the watcher set cancel_event during the run, raise the right signal now.
@@ -375,9 +377,10 @@ def make_supervisor_node(
             f'{{"next": "<worker_id>" | "done", "reason": "<one short sentence>"}}'
         )
 
+        _sup_user_id = str(agent.user_id) if getattr(agent, "user_id", None) else None
         step_id = await _new_step(execution_id, node_id, agent.id, routing_prompt)
         try:
-            raw = await _run_agent(config, routing_prompt, node_id, bus)
+            raw = await _run_agent(config, routing_prompt, node_id, bus, user_id=_sup_user_id)
             decision = _parse_decision(raw, [w["id"] for w in worker_specs])
             await _finish_step(step_id, "completed", {"text": raw, "decision": decision}, None)
         except (PauseSignal, TerminateSignal):

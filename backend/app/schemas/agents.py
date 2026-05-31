@@ -5,7 +5,11 @@ from pydantic import BaseModel, field_validator
 
 
 VALID_PROVIDERS = {"anthropic", "gemini", "openai"}
-VALID_TOOLS = {"web_search", "calculator", "get_datetime"}
+
+
+def _is_valid_tool(name: str) -> bool:
+    from app.core.tools.registry import TOOL_REGISTRY
+    return name in TOOL_REGISTRY or "__" in name
 
 
 class AgentBase(BaseModel):
@@ -36,10 +40,10 @@ class AgentBase(BaseModel):
     @field_validator("tools")
     @classmethod
     def validate_tools(cls, v: list[str]) -> list[str]:
-        invalid = set(v) - VALID_TOOLS
+        invalid = [t for t in v if not _is_valid_tool(t)]
         if invalid:
-            raise ValueError(f"unknown tools: {invalid}. Valid: {VALID_TOOLS}")
-        return list(set(v))  # deduplicate
+            raise ValueError(f"unknown tools: {invalid}")
+        return list(dict.fromkeys(v))  # deduplicate, preserve order
 
     @field_validator("temperature")
     @classmethod
@@ -94,10 +98,10 @@ class AgentUpdate(BaseModel):
     @classmethod
     def validate_tools(cls, v: Optional[list[str]]) -> Optional[list[str]]:
         if v is not None:
-            invalid = set(v) - VALID_TOOLS
+            invalid = [t for t in v if not _is_valid_tool(t)]
             if invalid:
                 raise ValueError(f"unknown tools: {invalid}")
-            return list(set(v))
+            return list(dict.fromkeys(v))
         return v
 
 

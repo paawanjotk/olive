@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         "https://ollivechat.netlify.app"
     ]
 
-    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ollive_chat"
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5433/ollive_chat"
 
     # Redis — Celery broker/result backend + workflow event pub/sub
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")

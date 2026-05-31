@@ -1,0 +1,77 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE: ghcr.io/${{ github.repository_owner }}/ollive-backend
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          build-args: SDK_PATH=sdk
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.BACKEND_IMAGE }}:latest
+          cache-from: type=registry,ref=${{ env.BACKEND_IMAGE }}:latest
+          cache-to: type=inline
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to DigitalOcean droplet
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PROD_ENV_B64: ${{ secrets.PROD_ENV_B64 }}
+        with:
+          host: 139.59.10.53
+          username: root
+          key: ${{ secrets.DO_SSH_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN,PROD_ENV_B64
+          script: |
+            set -e
+            cd /opt/ollive
+
+            # Pull latest code (Caddyfile, compose file, etc.)
+            git pull origin main
+
+            # Write production env file from secret
+            echo "$PROD_ENV_B64" | base64 -d > .env
+
+            # Authenticate with GHCR to pull the private image
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # Pull new image and restart services
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+
+            # Run migrations once backend is up
+            sleep 10
+            docker compose -f docker-compose.prod.yml exec -T backend alembic upgrade head
+
+            echo "Deploy complete."

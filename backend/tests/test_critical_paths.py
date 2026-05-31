@@ -257,7 +257,7 @@ async def test_slack_message_delivery():
         call_kwargs = mock_client.post.call_args
         assert "chat.postMessage" in str(call_kwargs)
         # Verify thread_ts was passed
-        body = call_kwargs.kwargs.get("json") or call_kwargs.args[1] if len(call_kwargs.args) > 1 else {}
+        body = call_kwargs.kwargs.get("json") or (call_kwargs.args[1] if len(call_kwargs.args) > 1 else {})
         if isinstance(body, dict):
             assert body.get("thread_ts") == "1234567890.001"
 

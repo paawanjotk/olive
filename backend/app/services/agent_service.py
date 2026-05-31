@@ -9,7 +9,7 @@ from app.schemas.agents import AgentCreate, AgentUpdate
 
 
 async def create_agent(db: AsyncSession, data: AgentCreate, user_id: uuid.UUID) -> Agent:
-    agent = Agent(**data.model_dump(), user_id=user_id)
+    agent = Agent(**data.model_dump(), user_id=user_id, is_active=True)
     db.add(agent)
     await db.commit()
     await db.refresh(agent)

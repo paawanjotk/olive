@@ -40,6 +40,7 @@ services:
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
       SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
       OBSERVE_ME_ENDPOINT: ${OBSERVE_ME_ENDPOINT:-http://ingestion:8001}
+      RELOAD: "true"
     volumes:
       - ./app:/app/app
       - ./tests:/app/tests

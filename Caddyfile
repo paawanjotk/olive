@@ -1,0 +1,24 @@
+# Auto SSL via Let's Encrypt. sslip.io maps 139-59-10-53.sslip.io → 139.59.10.53
+# so no custom domain is needed.
+#
+# To use your own domain later: replace the hostname below and point DNS A record
+# to 139.59.10.53 — Caddy will issue a cert automatically on first request.
+
+139-59-10-53.sslip.io {
+    reverse_proxy backend:8000 {
+        # WebSocket upgrade — allows wss:// connections from the frontend
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+
+        # Pass real client IP to FastAPI
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+
+        # Long timeout for streaming / LLM responses
+        transport http {
+            response_header_timeout 600s
+            read_buffer_size 4KB
+        }
+    }
+}

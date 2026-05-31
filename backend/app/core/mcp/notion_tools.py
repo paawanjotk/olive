@@ -78,45 +78,85 @@ async def notion__get_page_content(token: str, page_id: str, **_) -> str:
     return "\n".join(lines)[:8000] if lines else "(empty page)"
 
 
-async def notion__create_page(token: str, parent_page_id: str, title: str, content: str = "", **_) -> str:
-    """Create a new Notion page under a parent page."""
+def _md_to_blocks(content: str) -> list[dict]:
+    """Convert markdown text to Notion block objects. Handles headings, bullets, numbered lists."""
     blocks = []
-    if content:
-        for line in content.split("\n")[:50]:
-            if line.strip():
-                blocks.append({
-                    "object": "block",
-                    "type": "paragraph",
-                    "paragraph": {"rich_text": [{"type": "text", "text": {"content": line}}]},
-                })
+    for line in content.split("\n"):
+        stripped = line.rstrip()
+        if not stripped:
+            continue
+        if stripped.startswith("### "):
+            btype, text = "heading_3", stripped[4:]
+        elif stripped.startswith("## "):
+            btype, text = "heading_2", stripped[3:]
+        elif stripped.startswith("# "):
+            btype, text = "heading_1", stripped[2:]
+        elif stripped.startswith(("- ", "* ", "• ")):
+            btype, text = "bulleted_list_item", stripped[2:]
+        elif len(stripped) > 2 and stripped[0].isdigit() and stripped[1:3] in (". ", ") "):
+            btype, text = "numbered_list_item", stripped[3:]
+        else:
+            btype, text = "paragraph", stripped
+        # Notion text blocks have a 2000-char limit — split long lines
+        for chunk in [text[i:i+2000] for i in range(0, max(len(text), 1), 2000)]:
+            blocks.append({
+                "object": "block",
+                "type": btype,
+                btype: {"rich_text": [{"type": "text", "text": {"content": chunk}}]},
+            })
+    return blocks
+
+
+async def notion__create_page(token: str, parent_page_id: str, title: str, content: str = "", **_) -> str:
+    """Create a new Notion page under a parent page with full content support."""
+    all_blocks = _md_to_blocks(content) if content else []
+    # Notion limits initial children to 100 blocks per request
+    first_batch, remaining = all_blocks[:100], all_blocks[100:]
     payload = {
         "parent": {"page_id": parent_page_id},
         "properties": {
             "title": {"title": [{"type": "text", "text": {"content": title}}]}
         },
-        "children": blocks,
+        "children": first_batch,
     }
-    async with httpx.AsyncClient(timeout=15) as c:
+    async with httpx.AsyncClient(timeout=30) as c:
         r = await c.post(f"{_NOTION_BASE}/pages", headers=_headers(token), json=payload)
-    r.raise_for_status()
-    page = r.json()
-    return f"Created page '{title}'\nID: {page['id']}\nURL: {page.get('url', '')}"
+        r.raise_for_status()
+        page = r.json()
+        page_id = page["id"]
+        # Append remaining blocks in batches of 100
+        for i in range(0, len(remaining), 100):
+            batch = remaining[i:i+100]
+            ra = await c.patch(
+                f"{_NOTION_BASE}/blocks/{page_id}/children",
+                headers=_headers(token),
+                json={"children": batch},
+            )
+            ra.raise_for_status()
+    return f"Created page '{title}'\nID: {page_id}\nURL: {page.get('url', '')}"
 
 
 async def notion__append_block(token: str, block_id: str, content: str, block_type: str = "paragraph", **_) -> str:
-    """Append a block of content to an existing Notion page or block."""
-    btype = block_type if block_type in ("paragraph", "bulleted_list_item", "numbered_list_item", "quote", "to_do") else "paragraph"
-    payload = {
-        "children": [{
-            "object": "block",
-            "type": btype,
-            btype: {"rich_text": [{"type": "text", "text": {"content": content[:2000]}}]},
-        }]
-    }
-    async with httpx.AsyncClient(timeout=15) as c:
-        r = await c.patch(f"{_NOTION_BASE}/blocks/{block_id}/children", headers=_headers(token), json=payload)
-    r.raise_for_status()
-    return f"Appended {btype} block to {block_id}."
+    """Append content to an existing Notion page or block. Supports multi-line markdown content."""
+    blocks = _md_to_blocks(content)
+    if not blocks:
+        return "Nothing to append (empty content)."
+    # If caller forced a specific block_type, override the type on all blocks
+    allowed = {"paragraph", "bulleted_list_item", "numbered_list_item", "quote", "to_do"}
+    if block_type in allowed:
+        for b in blocks:
+            old_type = b["type"]
+            b["type"] = block_type
+            b[block_type] = b.pop(old_type)
+    async with httpx.AsyncClient(timeout=30) as c:
+        for i in range(0, len(blocks), 100):
+            r = await c.patch(
+                f"{_NOTION_BASE}/blocks/{block_id}/children",
+                headers=_headers(token),
+                json={"children": blocks[i:i+100]},
+            )
+            r.raise_for_status()
+    return f"Appended {len(blocks)} block(s) to {block_id}."
 
 
 async def notion__query_database(token: str, database_id: str, limit: int = 20, **_) -> str:

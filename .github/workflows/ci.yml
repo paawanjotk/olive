@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install SDK deps
+        run: pip install -e sdk/
+
+      - name: Install ingestion deps
+        working-directory: ingestion_backend
+        run: pip install fastapi uvicorn sqlalchemy asyncpg pydantic pydantic-settings "redis[hiredis]>=5.0.0" httpx pytest pytest-asyncio
+
+      - name: Check for syntax errors (SDK)
+        run: python -m py_compile sdk/observe_me/*.py
+
+      - name: Check for syntax errors (ingestion backend)
+        run: python -m py_compile ingestion_backend/app/**/*.py ingestion_backend/app/*.py
+
+      - name: Docker build check (backend)
+        run: docker build -f backend/Dockerfile -t ollive-backend-test . --quiet
+
+      - name: Docker build check (ingestion)
+        run: docker build -f ingestion_backend/Dockerfile -t ollive-ingestion-test . --quiet

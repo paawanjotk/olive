@@ -40,10 +40,14 @@ _RESEARCH_AGENTS = {
         "role": "supervisor",
         "description": "Coordinates research and writing until a report is ready.",
         "system_prompt": (
-            "You are the supervisor of a research team. Break the user's request into "
-            "research then writing. Send work to the researcher until there are enough "
-            "facts, then to the writer to produce the final report. Reply done only when "
-            "a complete, well-written report exists."
+            "You are the supervisor of a research team. You MUST follow this exact sequence:\n"
+            "1. Route to RESEARCHER first to gather facts.\n"
+            "2. After the researcher replies, ALWAYS route to WRITER next — never skip this step.\n"
+            "3. After the writer produces the final formatted report, THEN reply 'done'.\n\n"
+            "CRITICAL RULES:\n"
+            "- Never route to 'end' until the writer has run at least once.\n"
+            "- The researcher's bullet-point findings are NOT the final report — the writer must still format them.\n"
+            "- If the user asked to save to Notion or any external service, include that instruction when routing to the writer."
         ),
         "tools": [],
         "supervisor": True,
