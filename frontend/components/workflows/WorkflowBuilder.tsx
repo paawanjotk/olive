@@ -10,12 +10,13 @@ import '@xyflow/react/dist/style.css'
 import {
   ArrowLeft, Bot, GitBranch, ShieldCheck, Save, Play, Trash2, Loader2, Radio,
   History, CheckCircle2, XCircle, Clock, CalendarClock, Plus, RefreshCw,
+  Github, BookOpen,
 } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { styleEdges, graphToFlow, flowToGraph } from '@/lib/workflowGraph'
-import { listExecutions, listSchedules, createSchedule, deleteSchedule } from '@/lib/api'
+import { listExecutions, listSchedules, createSchedule, deleteSchedule, getMCPConnections } from '@/lib/api'
 import { cn } from '@/lib/utils'
-import type { Agent, Workflow, WorkflowExecution, WorkflowSchedule } from '@/lib/types'
+import type { Agent, MCPConnection, Workflow, WorkflowExecution, WorkflowSchedule } from '@/lib/types'
 
 interface Props {
   workflow: Workflow
@@ -360,6 +361,11 @@ const MODEL_OPTIONS = [
   { value: 'gemini-2.5-flash',  label: 'Gemini 2.5 Flash' },
 ]
 
+const MCP_PROVIDERS = [
+  { id: 'github', label: 'GitHub', icon: <Github size={12} />, accent: 'bg-[#24292e]' },
+  { id: 'notion', label: 'Notion', icon: <BookOpen size={12} />, accent: 'bg-[#191919]' },
+] as const
+
 function NodeOverridesPanel({
   data,
   onChange,
@@ -371,6 +377,12 @@ function NodeOverridesPanel({
   isSupervisor: boolean
   agent?: Agent
 }) {
+  const [mcpConnections, setMcpConnections] = useState<MCPConnection[]>([])
+
+  useEffect(() => {
+    getMCPConnections().then(setMcpConnections).catch(() => {})
+  }, [])
+
   // Override value from node data; fall back to agent's configured value
   const strVal = (key: string, agentVal?: string | null) =>
     (data[key] as string | undefined) ?? agentVal ?? ''
@@ -392,6 +404,19 @@ function NodeOverridesPanel({
       ? effectiveTools.filter((t) => t !== tool)
       : [...effectiveTools, tool]
     onChange({ tools: next })
+  }
+
+  // MCP providers: node override takes priority over agent's mcp_providers
+  const agentMCPs: string[] = (agent?.meta?.mcp_providers as string[] | undefined) ?? []
+  const nodeMCPs = data.mcp_providers
+  const effectiveMCPs: string[] = Array.isArray(nodeMCPs) ? (nodeMCPs as string[]) : agentMCPs
+  const hasMCPOverride = Array.isArray(nodeMCPs)
+
+  const toggleMCP = (provider: string) => {
+    const next = effectiveMCPs.includes(provider)
+      ? effectiveMCPs.filter((p) => p !== provider)
+      : [...effectiveMCPs, provider]
+    onChange({ mcp_providers: next })
   }
 
   return (
@@ -485,6 +510,68 @@ function NodeOverridesPanel({
               >
                 Reset to agent default
               </button>
+            )}
+          </div>
+        </Field>
+      )}
+
+      {!isSupervisor && (
+        <Field label="MCP Integrations">
+          <div className="mt-1 space-y-1.5">
+            {MCP_PROVIDERS.map(({ id, label, icon, accent }) => {
+              const conn = mcpConnections.find((c) => c.provider === id)
+              const connected = conn?.connected ?? false
+              const enabled = effectiveMCPs.includes(id)
+              return (
+                <label
+                  key={id}
+                  className={cn(
+                    'flex items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 cursor-pointer transition-colors',
+                    enabled ? 'bg-white/[0.06]' : 'bg-white/[0.02]',
+                    !connected && 'opacity-50 cursor-not-allowed',
+                  )}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={cn('w-5 h-5 rounded flex items-center justify-center text-white flex-shrink-0', accent)}>
+                      {icon}
+                    </div>
+                    <span className="text-[11px] text-white/70 font-medium">{label}</span>
+                    {connected ? (
+                      <span className="text-[9px] text-emerald-400/80 bg-emerald-400/10 px-1 rounded-full">connected</span>
+                    ) : (
+                      <span className="text-[9px] text-white/20 bg-white/5 px-1 rounded-full">not connected</span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!connected}
+                    onClick={() => toggleMCP(id)}
+                    className={cn(
+                      'w-8 h-4 rounded-full p-0.5 transition-colors flex-shrink-0 disabled:cursor-not-allowed',
+                      enabled && connected ? 'bg-emerald-500/70' : 'bg-white/[0.1]',
+                    )}
+                  >
+                    <span className={cn(
+                      'block w-3 h-3 rounded-full bg-white transition-transform',
+                      enabled && connected && 'translate-x-[16px]',
+                    )} />
+                  </button>
+                </label>
+              )
+            })}
+            {hasMCPOverride && (
+              <button
+                type="button"
+                onClick={() => onChange({ mcp_providers: undefined })}
+                className="text-[10px] text-white/25 hover:text-white/50 underline mt-0.5"
+              >
+                Reset to agent default
+              </button>
+            )}
+            {mcpConnections.length > 0 && !mcpConnections.some(c => c.connected) && (
+              <p className="text-[10px] text-white/25 leading-snug">
+                Connect GitHub or Notion in Settings → Integrations to enable.
+              </p>
             )}
           </div>
         </Field>

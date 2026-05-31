@@ -225,6 +225,10 @@ def _apply_node_overrides(base_config: AgentConfig, node_data: dict) -> AgentCon
     approval_tools = node_data.get("approval_tools")
     if isinstance(approval_tools, list):
         overrides["approval_tools"] = approval_tools
+    # mcp_providers override: explicit list in node_data wins over agent default
+    mcp_providers = node_data.get("mcp_providers")
+    if isinstance(mcp_providers, list):
+        overrides["mcp_providers"] = mcp_providers
     return replace(base_config, **overrides) if overrides else base_config
 
 

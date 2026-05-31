@@ -32,6 +32,14 @@ class Settings(BaseSettings):
     SLACK_BOT_TOKEN: str = os.getenv("SLACK_BOT_TOKEN", "")
     SLACK_APP_TOKEN: str = os.getenv("SLACK_APP_TOKEN", "")
 
+    # MCP OAuth integrations
+    GITHUB_CLIENT_ID: str = os.getenv("GITHUB_CLIENT_ID", "")
+    GITHUB_CLIENT_SECRET: str = os.getenv("GITHUB_CLIENT_SECRET", "")
+    NOTION_CLIENT_ID: str = os.getenv("NOTION_CLIENT_ID", "")
+    NOTION_CLIENT_SECRET: str = os.getenv("NOTION_CLIENT_SECRET", "")
+    BACKEND_URL: str = os.getenv("BACKEND_URL", "http://localhost:8000")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
     # Supabase auth
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")

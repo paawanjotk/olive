@@ -362,3 +362,19 @@ export async function createSchedule(workflowId: string, data: WorkflowScheduleC
 export async function deleteSchedule(workflowId: string, scheduleId: string): Promise<void> {
   return apiRequest<void>(`/workflows/${workflowId}/schedules/${scheduleId}`, { method: 'DELETE' })
 }
+
+// ── MCP integrations ──────────────────────────────────────────────────────────
+
+import type { MCPConnection } from './types'
+
+export async function getMCPConnections(): Promise<MCPConnection[]> {
+  return apiRequest<MCPConnection[]>('/mcp/connections')
+}
+
+export async function mcpOAuthStart(provider: string): Promise<{ url: string }> {
+  return apiRequest<{ url: string }>(`/mcp/${encodeURIComponent(provider)}/oauth/start`)
+}
+
+export async function disconnectMCP(provider: string): Promise<void> {
+  return apiRequest<void>(`/mcp/${encodeURIComponent(provider)}`, { method: 'DELETE' })
+}

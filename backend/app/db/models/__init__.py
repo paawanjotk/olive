@@ -10,6 +10,7 @@ from app.db.models.workflows import (
     ExecutionEvent,
 )
 from app.db.models.channels import ChannelBinding
+from app.db.models.mcp import MCPConnection
 
 __all__ = [
     "User",
@@ -21,4 +22,5 @@ __all__ = [
     "WorkflowStep",
     "ExecutionEvent",
     "ChannelBinding",
+    "MCPConnection",
 ]

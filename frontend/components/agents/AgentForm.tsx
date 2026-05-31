@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { Loader2, ChevronDown, Send } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Loader2, ChevronDown, Send, Github, BookOpen } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import ToolSelector from './ToolSelector'
 import SoulMDEditor from './SoulMDEditor'
-import type { Agent, AgentCreate } from '@/lib/types'
+import { getMCPConnections } from '@/lib/api'
+import type { Agent, AgentCreate, MCPConnection } from '@/lib/types'
 
 const MODELS = [
   { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', provider: 'anthropic' },
@@ -46,6 +47,7 @@ interface FormState {
   channel_slack_send: boolean
   channel_slack_receive: boolean
   channel_slack_socket: boolean
+  mcp_providers: string[]
 }
 
 const DEFAULT: FormState = {
@@ -59,6 +61,7 @@ const DEFAULT: FormState = {
   channel_slack_send: false,
   channel_slack_receive: false,
   channel_slack_socket: false,
+  mcp_providers: [],
 }
 
 function fromAgent(a: Agent): FormState {
@@ -79,6 +82,7 @@ function fromAgent(a: Agent): FormState {
     channel_slack_send: sl.send ?? false,
     channel_slack_receive: sl.receive ?? false,
     channel_slack_socket: sl.socket ?? false,
+    mcp_providers: (a.meta?.mcp_providers as string[] | undefined) ?? [],
   }
 }
 
@@ -128,7 +132,7 @@ function Textarea({
   )
 }
 
-type Section = 'identity' | 'brain' | 'memory' | 'channels' | 'guardrails'
+type Section = 'identity' | 'brain' | 'memory' | 'channels' | 'mcps' | 'guardrails'
 
 function ChannelToggle({
   label, description, value, onChange,
@@ -157,6 +161,11 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [section, setSection] = useState<Section>('identity')
+  const [mcpConnections, setMcpConnections] = useState<MCPConnection[]>([])
+
+  useEffect(() => {
+    getMCPConnections().then(setMcpConnections).catch(() => {})
+  }, [])
 
   const set = (key: keyof FormState) => (v: string | number | string[] | boolean) =>
     setForm((prev) => ({ ...prev, [key]: v }))
@@ -193,6 +202,7 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
         guardrails,
         meta: {
           avatar_emoji: form.avatar_emoji,
+          mcp_providers: form.mcp_providers,
           channel_config: {
             telegram: { send: form.channel_telegram_send, receive: form.channel_telegram_receive },
             slack: { send: form.channel_slack_send, receive: form.channel_slack_receive, socket: form.channel_slack_socket },
@@ -211,8 +221,18 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
     { id: 'brain', label: 'Brain' },
     { id: 'memory', label: 'Memory' },
     { id: 'channels', label: 'Channels' },
+    { id: 'mcps', label: 'MCPs' },
     { id: 'guardrails', label: 'Guardrails' },
   ]
+
+  function toggleMCP(provider: string) {
+    setForm((prev) => ({
+      ...prev,
+      mcp_providers: prev.mcp_providers.includes(provider)
+        ? prev.mcp_providers.filter((p) => p !== provider)
+        : [...prev.mcp_providers, provider],
+    }))
+  }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
@@ -401,6 +421,77 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
             <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] px-3 py-2.5 text-[11px] text-white/30 leading-relaxed">
               Channel bindings are configured in <span className="text-white/50">Workflows → Channels</span>. These toggles mark which modes this agent participates in.
             </div>
+          </div>
+        )}
+
+        {section === 'mcps' && (
+          <div className="space-y-4">
+            <div className="rounded-lg bg-white/[0.02] border border-white/[0.04] px-3 py-2.5 text-[11px] text-white/30 leading-relaxed">
+              Enable MCP integrations for this agent. The agent will be able to call GitHub and Notion tools at runtime using your connected accounts from <span className="text-white/50">Settings → Integrations</span>.
+            </div>
+
+            {[
+              {
+                id: 'github',
+                label: 'GitHub',
+                description: 'list_repos · list_issues · create_issue · list_prs · get_file · search_code',
+                icon: <Github size={16} />,
+                accent: 'bg-[#24292e]',
+              },
+              {
+                id: 'notion',
+                label: 'Notion',
+                description: 'search · get_page · get_page_content · create_page · append_block · query_database',
+                icon: <BookOpen size={16} />,
+                accent: 'bg-[#191919]',
+              },
+            ].map((provider) => {
+              const conn = mcpConnections.find((c) => c.provider === provider.id)
+              const enabled = form.mcp_providers.includes(provider.id)
+              const connected = conn?.connected ?? false
+
+              return (
+                <div key={provider.id} className={cn(
+                  'rounded-xl border p-4 transition-colors',
+                  enabled ? 'border-white/20 bg-white/[0.06]' : 'border-white/[0.06] bg-white/[0.02]'
+                )}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-white flex-shrink-0 mt-0.5', provider.accent)}>
+                        {provider.icon}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[13px] text-white/80 font-medium">{provider.label}</span>
+                          {connected ? (
+                            <span className="text-[10px] text-emerald-400 bg-emerald-400/10 px-1.5 py-0.5 rounded-full">connected</span>
+                          ) : (
+                            <span className="text-[10px] text-white/25 bg-white/5 px-1.5 py-0.5 rounded-full">not connected</span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-white/30 mt-0.5 font-mono leading-relaxed">{provider.description}</p>
+                        {!connected && (
+                          <p className="text-[10px] text-amber-400/70 mt-1">
+                            Connect in Settings → Integrations first
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleMCP(provider.id)}
+                      disabled={!connected}
+                      className={cn(
+                        'mt-0.5 w-9 h-5 rounded-full p-0.5 transition-colors flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed',
+                        enabled ? 'bg-emerald-500/70' : 'bg-white/[0.1]'
+                      )}
+                    >
+                      <span className={cn('block w-4 h-4 rounded-full bg-white transition-transform', enabled && 'translate-x-[16px]')} />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 

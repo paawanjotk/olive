@@ -502,7 +502,14 @@ async def run_agent_turn(
             # On the last round, strip tools so the model is forced to synthesise
             # a final text answer from all gathered context instead of looping further.
             is_final_round = _round >= config.max_iterations
-            round_tools = [] if is_final_round else _filtered_anthropic_tools(config.tools)
+            if is_final_round:
+                round_tools = []
+            else:
+                round_tools = _filtered_anthropic_tools(config.tools)
+                if config.mcp_providers and user_id:
+                    from app.core.mcp.registry import get_mcp_tool_defs
+                    mcp_defs = await get_mcp_tool_defs(config.mcp_providers, user_id)
+                    round_tools = round_tools + mcp_defs
 
             gen_trace = obs.start_trace(
                 provider="anthropic",

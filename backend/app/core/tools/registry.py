@@ -257,11 +257,21 @@ GEMINI_TOOL_DEFS = _build_gemini_tools()
 
 
 async def execute_tool(name: str, tool_input: dict) -> str:
-    """Execute a tool by name with the given input dict. Returns string result or raises on failure."""
+    """Execute a tool by name. Handles both built-in tools and MCP provider tools.
+
+    MCP tool names use double-underscore provider prefix: github__list_repos, notion__search.
+    """
     fn = TOOL_REGISTRY.get(name)
-    if fn is None:
-        raise ValueError(f"Unknown tool: {name}")
-    return await fn(**tool_input)
+    if fn is not None:
+        return await fn(**tool_input)
+
+    # MCP tool — delegate to the MCP registry with the current user context
+    if "__" in name:
+        from app.core.mcp.registry import execute_mcp_tool
+        from .workflow_tools import get_tool_user_id
+        return await execute_mcp_tool(name, tool_input, get_tool_user_id())
+
+    raise ValueError(f"Unknown tool: {name}")
 
 
 from .workflow_tools import set_tool_user_id  # noqa: E402 — re-exported for callers

@@ -251,6 +251,13 @@ export interface WorkflowScheduleCreate {
   input_text?: string
 }
 
+export interface MCPConnection {
+  provider: 'github' | 'notion'
+  connected: boolean
+  meta: Record<string, unknown>
+  scope: string | null
+}
+
 export interface ChannelBinding {
   id: string
   user_id: string

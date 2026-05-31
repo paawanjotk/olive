@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useChat } from '@/hooks/useChat'
 import { useAuth } from '@/contexts/AuthContext'
 import ChatSidebar from './ChatSidebar'
@@ -16,12 +16,22 @@ type AppView = 'chat' | 'agents' | 'workflows' | 'monitoring' | 'settings'
 export default function ChatInterface() {
   const { session, loading, signOut } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const chat = useChat()
   const [activeView, setActiveView] = useState<AppView>('chat')
 
   useEffect(() => {
     if (!loading && !session) router.replace('/login')
   }, [session, loading, router])
+
+  // After popup-blocked OAuth same-tab flow, land back here with ?mcp_connected=
+  useEffect(() => {
+    if (searchParams.get('mcp_connected') || searchParams.get('mcp_error')) {
+      setActiveView('settings')
+      // Clean up the query param without a full reload
+      router.replace('/', { scroll: false })
+    }
+  }, [searchParams, router])
 
   if (loading || !session) return null
 
