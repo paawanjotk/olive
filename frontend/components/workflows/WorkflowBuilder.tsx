@@ -250,24 +250,44 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
                 />
               )}
 
-              {selected.type === 'checkpoint' && (
-                <Field label="Approval via">
-                  <select
-                    value={(selected.data.approval_mode as string) ?? 'web'}
-                    onChange={(e) => updateSelected({ approval_mode: e.target.value })}
-                    className="builder-input"
-                  >
-                    <option value="web" className="bg-[#1a1a1a]">Web UI — Approve/Reject buttons</option>
-                    <option value="slack" className="bg-[#1a1a1a]">Slack — reply in thread</option>
-                    <option value="both" className="bg-[#1a1a1a]">Both — whichever responds first</option>
-                  </select>
-                  <p className="text-[10px] text-white/30 mt-1.5 leading-snug">
-                    Web shows an Approve/Reject overlay in the run monitor. Slack posts the pending
-                    output to the thread and waits for an <span className="text-white/50">approve</span>/<span className="text-white/50">reject</span> reply.
-                    The run pauses up to 5 min, then auto-approves.
-                  </p>
-                </Field>
-              )}
+              {selected.type === 'checkpoint' && (() => {
+                const approvalMode = (selected.data.approval_mode as string) ?? 'web'
+                const needsSlack = approvalMode === 'slack' || approvalMode === 'both'
+                return (
+                  <>
+                    <Field label="Approval via">
+                      <select
+                        value={approvalMode}
+                        onChange={(e) => updateSelected({ approval_mode: e.target.value })}
+                        className="builder-input"
+                      >
+                        <option value="web" className="bg-[#1a1a1a]">Web UI — Approve/Reject buttons</option>
+                        <option value="slack" className="bg-[#1a1a1a]">Slack — interactive buttons</option>
+                        <option value="both" className="bg-[#1a1a1a]">Both — whichever responds first</option>
+                      </select>
+                      <p className="text-[10px] text-white/30 mt-1.5 leading-snug">
+                        Web shows an Approve/Reject overlay in the run monitor. Slack posts a Block Kit
+                        card with Approve/Reject buttons — works even for manually triggered runs.
+                        The run pauses up to 5 min, then auto-approves.
+                      </p>
+                    </Field>
+                    {needsSlack && (
+                      <Field label="Slack channel ID">
+                        <input
+                          value={(selected.data.slack_channel_id as string) ?? ''}
+                          onChange={(e) => updateSelected({ slack_channel_id: e.target.value })}
+                          placeholder="C0123ABCDEF  (required for Slack approval)"
+                          className="builder-input text-[12px]"
+                        />
+                        <p className="text-[10px] text-white/25 mt-1 leading-snug">
+                          Approval card is posted here regardless of how the workflow was triggered.
+                          Find the ID in Slack: right-click channel → View channel details.
+                        </p>
+                      </Field>
+                    )}
+                  </>
+                )
+              })()}
 
               {editable && (
                 <>

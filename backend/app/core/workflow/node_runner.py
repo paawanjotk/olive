@@ -352,10 +352,19 @@ def make_supervisor_node(
 
         work = state.get("node_outputs", {})
         work_summary = "\n\n".join(f"### {k}\n{v}" for k, v in work.items()) or "(no work yet)"
+        # Identify checkpoint nodes so the supervisor knows not to re-visit them.
+        checkpoint_ids = [w["id"] for w in worker_specs if w.get("kind") == "checkpoint"]
+        checkpoint_note = ""
+        if checkpoint_ids:
+            checkpoint_note = (
+                "\n\nIMPORTANT: Nodes marked [checkpoint] are one-time human-approval gates. "
+                "If a checkpoint appears in 'Work completed so far' with value 'checkpoint:approved', "
+                "it has already been passed — do NOT route to it again. Route to the next logical worker."
+            )
         routing_prompt = (
             f"You are the supervisor of a team of agents. The user's task:\n\n"
             f"{state['original_input']}\n\n"
-            f"## Available workers\n{roster}\n\n"
+            f"## Available workers\n{roster}{checkpoint_note}\n\n"
             f"## Work completed so far\n{work_summary}\n\n"
             f"Decide the SINGLE next worker that should act, or reply done if the task "
             f"is fully complete. Respond with ONLY a JSON object, no prose:\n"
@@ -429,6 +438,7 @@ def make_checkpoint_node(
     trigger_context: dict | None = None,
     label: str = "Human checkpoint",
     timeout: int = 300,
+    slack_channel_id: str | None = None,
 ) -> Callable:
     """Human checkpoint. Blocks on Redis BLPOP until approved/rejected, then
     continues (auto-approves after `timeout` seconds to avoid stalled runs).
@@ -449,32 +459,46 @@ def make_checkpoint_node(
         # Control signal check before blocking on approval
         await _check_control(state["execution_id"], node_id, bus)
 
-        await bus.publish("node_started", node_id=node_id, label=label, role="checkpoint")
+        execution_id = state["execution_id"]
         latest = list(state.get("node_outputs", {}).values())
         preview = latest[-1][:1500] if latest else ""
-        execution_id = state["execution_id"]
+
+        # Create a WorkflowStep row so the checkpoint appears in the trace like every other node.
+        step_id = await _new_step(execution_id, node_id, None, preview or "(awaiting approval)")
+
+        await bus.publish("node_started", node_id=node_id, label=label, role="checkpoint")
         approval_key = f"approval:{execution_id}:{node_id}"
 
-        # Web monitor overlay (always emitted so the UI can respond).
-        await bus.publish("approval_requested", node_id=node_id, preview=preview, mode=approval_mode)
+        # Web monitor overlay — only emitted when the mode calls for web interaction.
+        # "slack" mode must NOT show the web overlay: it would let the UI approve
+        # while Slack is still waiting, creating a race/duplicate-approval situation.
+        if approval_mode in ("web", "both"):
+            await bus.publish("approval_requested", node_id=node_id, preview=preview, mode=approval_mode)
+        else:
+            # Still log it in the event stream so the monitor shows "awaiting approval"
+            # as a status line, but without opening the interactive overlay.
+            await bus.publish("approval_requested_slack", node_id=node_id, preview=preview, mode=approval_mode)
 
-        # Slack approval: post a Block Kit interactive message in-thread so the
-        # user can click Approve/Reject buttons. Also register a text-reply mapping
-        # as a fallback (the socket worker handles plain-text replies too).
+        # Slack approval: post a Block Kit interactive message so the user can
+        # click Approve/Reject. Works whether the workflow was triggered from Slack
+        # or manually — as long as a channel is known.
+        #
+        # Channel resolution priority:
+        #   1. slack_channel_id configured directly on the checkpoint node (node_data)
+        #   2. channel_id from trigger_context (when triggered from Slack)
         slack_lookup_key = None
-        platform = trigger_context.get("platform")
-        if approval_mode in ("slack", "both") and platform == "slack":
-            channel_id = trigger_context.get("channel_id")
-            thread_ts = trigger_context.get("thread_ts")
-            if channel_id and thread_ts:
-                from app.services import slack_service
+        if approval_mode in ("slack", "both"):
+            channel_id = slack_channel_id or (trigger_context.get("channel_id") if trigger_context else None)
+            thread_ts = trigger_context.get("thread_ts") if trigger_context else None
+            if channel_id:
                 try:
                     await _send_slack_approval_block(
                         channel_id, thread_ts, execution_id, node_id, preview, label
                     )
                 except Exception as e:
                     logger.warning("Slack approval prompt failed: %s", e)
-                slack_lookup_key = f"slack_approval:{channel_id}:{thread_ts}"
+                # Register text-reply lookup key (socket worker uses this for plain-text replies).
+                slack_lookup_key = f"slack_approval:{channel_id}:{thread_ts or 'direct'}"
                 r0 = aioredis.from_url(settings.REDIS_URL)
                 try:
                     await r0.set(
@@ -484,19 +508,24 @@ def make_checkpoint_node(
                     )
                 finally:
                     await r0.aclose()
+            else:
+                logger.warning(
+                    "Checkpoint %s: approval_mode=%s but no Slack channel configured. "
+                    "Set 'Slack channel ID' on the checkpoint node in the workflow builder.",
+                    node_id, approval_mode,
+                )
 
         # Block until a signal arrives (web button or Slack reply) or timeout.
         r = aioredis.from_url(settings.REDIS_URL)
+        approved = True
+        reject_reason = ""
         try:
             result = await r.blpop(approval_key, timeout=timeout)
             if result:
                 data = json.loads(result[1])
                 if not data.get("approved", True):
-                    reason = data.get("reason", "No reason given")
-                    await bus.publish("node_failed", node_id=node_id, error=f"Rejected: {reason}")
-                    raise ValueError(f"Checkpoint rejected: {reason}")
-        except ValueError:
-            raise
+                    approved = False
+                    reject_reason = data.get("reason", "No reason given")
         except Exception:
             await bus.publish("approval_timeout", node_id=node_id)
         finally:
@@ -510,8 +539,19 @@ def make_checkpoint_node(
             except Exception:
                 pass
 
+        if not approved:
+            await _finish_step(step_id, "failed", {"text": f"Rejected: {reject_reason}"}, reject_reason)
+            await bus.publish("node_failed", node_id=node_id, error=f"Rejected: {reject_reason}")
+            raise ValueError(f"Checkpoint rejected: {reject_reason}")
+
+        await _finish_step(step_id, "completed",
+                           {"text": "approved", "approval_mode": approval_mode}, None)
         await bus.publish("node_completed", node_id=node_id, output="(approved)")
-        return {}
+        # Write to node_outputs so the supervisor sees this checkpoint as completed
+        # and does NOT route back to it on the next turn.
+        new_outputs = dict(state.get("node_outputs") or {})
+        new_outputs[node_id] = "checkpoint:approved"
+        return {"node_outputs": new_outputs}
 
     return node_fn
 

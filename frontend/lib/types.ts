@@ -171,6 +171,7 @@ export type ExecutionEvent =
   | { type: 'node_completed'; execution_id: string; node_id: string; output: string; usage?: Record<string, number>; ts: string }
   | { type: 'node_failed'; execution_id: string; node_id: string; error: string; ts: string }
   | { type: 'approval_requested'; execution_id: string; node_id: string; preview: string; ts: string }
+  | { type: 'approval_requested_slack'; execution_id: string; node_id: string; preview: string; mode: string; ts: string }
   | { type: 'tool_approval_requested'; execution_id: string; node_id: string; tool_name: string; tool_input: Record<string, unknown>; call_id: string; ts: string }
   | { type: 'output_sent'; execution_id: string; platform: string; chat_id: string; ts: string }
   | { type: 'execution_completed'; execution_id: string; output: string; ts: string }

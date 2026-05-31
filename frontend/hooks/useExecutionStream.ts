@@ -222,8 +222,13 @@ export function useExecutionStream(executionId: string | null, refreshKey = 0): 
               break
             }
             case 'approval_requested':
+              // Only open the web overlay for web/both mode (slack mode uses a different event).
               next.pendingApproval = { nodeId: ev.node_id ?? '', preview: (ev as any).preview ?? '' }
-              next.logs = log(s, ev.type, `⏸ awaiting human approval`, ev.node_id)
+              next.logs = log(s, ev.type, `⏸ awaiting human approval (web)`, ev.node_id)
+              break
+            case 'approval_requested_slack':
+              // Slack-only: log the wait status but do NOT open the web overlay.
+              next.logs = log(s, ev.type, `⏸ awaiting human approval (via Slack)`, (ev as any).node_id)
               break
             case 'output_sent':
               next.logs = log(s, ev.type, `📤 sent to ${ev.platform}`)

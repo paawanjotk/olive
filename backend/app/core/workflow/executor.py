@@ -89,9 +89,12 @@ def _worker_specs(graph_json: dict, supervisor_id: str, agents: dict[str, Agent]
         if node is None or node.get("type") in ("end", "trigger", "start"):
             continue
         data = node.get("data", {})
+        ntype = node.get("type") or "agent"
         agent = agents.get(t)
         desc = data.get("description") or (getattr(agent, "description", "") if agent else "") or ""
-        specs.append({"id": t, "label": data.get("label") or t, "description": desc})
+        if ntype == "checkpoint":
+            desc = f"[checkpoint] {desc or 'Human approval gate — pauses the workflow for human review'}"
+        specs.append({"id": t, "label": data.get("label") or t, "description": desc, "kind": ntype})
     return specs
 
 
@@ -173,6 +176,7 @@ async def run_workflow_execution(execution_id: str) -> None:
                     approval_mode=node_data.get("approval_mode", "web"),
                     trigger_context=trigger_context,
                     label=node_data.get("label", "Human checkpoint"),
+                    slack_channel_id=node_data.get("slack_channel_id") or None,
                 )
             elif ntype == "supervisor":
                 agent = agents.get(nid)
