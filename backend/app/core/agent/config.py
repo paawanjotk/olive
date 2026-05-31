@@ -77,7 +77,7 @@ class AgentConfig:
                 "pause_execution", "resume_execution", "terminate_execution",
                 "slack_list_threads", "slack_get_thread",
             ],
-            mcp_providers=["github", "notion"],
+            mcp_providers=[],
         )
 
     @classmethod
