@@ -269,23 +269,32 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
               )}
 
               {editable && (
-                <Field label="Agent">
-                  <select
-                    value={(selected.data.agentId as string) ?? ''}
-                    onChange={(e) => updateSelected({ agentId: e.target.value })}
-                    className="builder-input"
-                  >
-                    <option value="" className="bg-[#1a1a1a]">— select agent —</option>
-                    {agents.map((a) => (
-                      <option key={a.id} value={a.id} className="bg-[#1a1a1a]">{a.name}</option>
-                    ))}
-                  </select>
-                  {selected.type === 'supervisor' && (
-                    <p className="text-[10px] text-amber-400/60 mt-1.5 leading-snug">
-                      Outgoing edges become dotted — this agent decides which to follow at runtime.
-                    </p>
-                  )}
-                </Field>
+                <>
+                  <Field label="Agent">
+                    <select
+                      value={(selected.data.agentId as string) ?? ''}
+                      onChange={(e) => updateSelected({ agentId: e.target.value })}
+                      className="builder-input"
+                    >
+                      <option value="" className="bg-[#1a1a1a]">— select agent —</option>
+                      {agents.map((a) => (
+                        <option key={a.id} value={a.id} className="bg-[#1a1a1a]">{a.name}</option>
+                      ))}
+                    </select>
+                    {selected.type === 'supervisor' && (
+                      <p className="text-[10px] text-amber-400/60 mt-1.5 leading-snug">
+                        Outgoing edges become dotted — this agent decides which to follow at runtime.
+                      </p>
+                    )}
+                  </Field>
+
+                  <NodeOverridesPanel
+                    data={selected.data as Record<string, unknown>}
+                    onChange={updateSelected}
+                    isSupervisor={selected.type === 'supervisor'}
+                    agent={agents.find((a) => a.id === (selected.data.agentId as string))}
+                  />
+                </>
               )}
             </div>
           )}
@@ -314,6 +323,168 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
         }
         .builder-input:focus { border-color: rgba(255,255,255,0.2); }
       `}</style>
+    </div>
+  )
+}
+
+const AVAILABLE_TOOLS = [
+  'web_search', 'calculator', 'get_datetime',
+  'list_workflows', 'run_workflow', 'get_workflow_status',
+]
+
+const MODEL_OPTIONS = [
+  { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6' },
+  { value: 'gpt-4o-mini',       label: 'GPT-4o mini' },
+  { value: 'gemini-2.5-flash',  label: 'Gemini 2.5 Flash' },
+]
+
+function NodeOverridesPanel({
+  data,
+  onChange,
+  isSupervisor,
+  agent,
+}: {
+  data: Record<string, unknown>
+  onChange: (patch: Record<string, unknown>) => void
+  isSupervisor: boolean
+  agent?: Agent
+}) {
+  // Override value from node data; fall back to agent's configured value
+  const strVal = (key: string, agentVal?: string | null) =>
+    (data[key] as string | undefined) ?? agentVal ?? ''
+
+  const numStr = (key: string, agentVal?: number) => {
+    const v = data[key]
+    if (v !== undefined && v !== '') return String(v)
+    return agentVal !== undefined ? String(agentVal) : ''
+  }
+
+  // Tools: node override takes priority. If no override, show agent's tools as current state.
+  const agentTools: string[] = agent?.tools ?? AVAILABLE_TOOLS
+  const nodeTools = data.tools
+  const effectiveTools: string[] = Array.isArray(nodeTools) ? (nodeTools as string[]) : agentTools
+  const hasNodeOverride = Array.isArray(nodeTools)
+
+  const toggleTool = (tool: string) => {
+    const next = effectiveTools.includes(tool)
+      ? effectiveTools.filter((t) => t !== tool)
+      : [...effectiveTools, tool]
+    onChange({ tools: next })
+  }
+
+  return (
+    <div className="border-t border-white/[0.06] pt-3 space-y-3">
+      <p className="text-[10px] uppercase tracking-wide text-white/40">Config overrides</p>
+      <p className="text-[10px] text-white/25 leading-snug -mt-1">
+        Values shown are the agent&apos;s current defaults. Edit any field to override for this node only.
+      </p>
+
+      <Field label="System prompt">
+        <textarea
+          value={strVal('system_prompt', agent?.system_prompt)}
+          onChange={(e) => onChange({ system_prompt: e.target.value })}
+          rows={3}
+          className="builder-input resize-none text-[12px]"
+        />
+      </Field>
+
+      <Field label="Model">
+        <select
+          value={strVal('model', agent?.model)}
+          onChange={(e) => onChange({ model: e.target.value })}
+          className="builder-input text-[12px]"
+        >
+          {MODEL_OPTIONS.map((m) => (
+            <option key={m.value} value={m.value} className="bg-[#1a1a1a]">{m.label}</option>
+          ))}
+        </select>
+      </Field>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Temperature">
+          <input
+            type="number" min={0} max={1} step={0.05}
+            value={numStr('temperature', agent?.temperature)}
+            onChange={(e) => onChange({ temperature: e.target.value === '' ? '' : parseFloat(e.target.value) })}
+            className="builder-input text-[12px]"
+          />
+        </Field>
+        <Field label="Max tokens">
+          <input
+            type="number" min={1} step={256}
+            value={numStr('max_tokens', agent?.max_tokens)}
+            onChange={(e) => onChange({ max_tokens: e.target.value === '' ? '' : parseInt(e.target.value) })}
+            className="builder-input text-[12px]"
+          />
+        </Field>
+      </div>
+
+      {!isSupervisor && (
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Max iter">
+            <input
+              type="number" min={1} max={20}
+              value={numStr('max_iterations', agent?.max_iterations)}
+              onChange={(e) => onChange({ max_iterations: e.target.value === '' ? '' : parseInt(e.target.value) })}
+              className="builder-input text-[12px]"
+            />
+          </Field>
+          <Field label="Retries">
+            <input
+              type="number" min={0} max={5}
+              value={numStr('max_retries')}
+              onChange={(e) => onChange({ max_retries: e.target.value === '' ? '' : parseInt(e.target.value) })}
+              placeholder="1"
+              className="builder-input text-[12px]"
+            />
+          </Field>
+        </div>
+      )}
+
+      {!isSupervisor && (
+        <Field label="Tools">
+          <div className="mt-1 space-y-1">
+            {AVAILABLE_TOOLS.map((tool) => (
+              <label key={tool} className="flex items-center gap-2 cursor-pointer group">
+                <input
+                  type="checkbox"
+                  checked={effectiveTools.includes(tool)}
+                  onChange={() => toggleTool(tool)}
+                  className="accent-violet-400"
+                />
+                <span className="text-[11px] text-white/60 group-hover:text-white/80 font-mono">{tool}</span>
+              </label>
+            ))}
+            {hasNodeOverride && (
+              <button
+                type="button"
+                onClick={() => onChange({ tools: undefined })}
+                className="text-[10px] text-white/25 hover:text-white/50 underline mt-1"
+              >
+                Reset to agent default
+              </button>
+            )}
+          </div>
+        </Field>
+      )}
+
+      <Field label="Memory (MD)">
+        <textarea
+          value={strVal('memory_md', agent?.memory_md)}
+          onChange={(e) => onChange({ memory_md: e.target.value })}
+          rows={2}
+          className="builder-input resize-none text-[12px]"
+        />
+      </Field>
+
+      <Field label="Soul (MD)">
+        <textarea
+          value={strVal('soul_md', agent?.soul_md)}
+          onChange={(e) => onChange({ soul_md: e.target.value })}
+          rows={2}
+          className="builder-input resize-none text-[12px]"
+        />
+      </Field>
     </div>
   )
 }

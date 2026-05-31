@@ -5,11 +5,11 @@ import {
   ReactFlow, ReactFlowProvider, Background, type Edge, type Node,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { ArrowLeft, Coins, Hash, CheckCircle2, XCircle, Loader2, ShieldCheck, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { ArrowLeft, Coins, Hash, CheckCircle2, XCircle, Loader2, ShieldCheck, ThumbsUp, ThumbsDown, Pause, Square, RotateCcw } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { graphToFlow } from '@/lib/workflowGraph'
 import { useExecutionStream } from '@/hooks/useExecutionStream'
-import { approveCheckpoint } from '@/lib/api'
+import { approveCheckpoint, pauseExecution, resumeExecution, terminateExecution } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Workflow } from '@/lib/types'
 
@@ -20,8 +20,25 @@ interface Props {
 }
 
 function MonitorInner({ workflow, executionId, onBack }: Props) {
-  const stream = useExecutionStream(executionId)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const stream = useExecutionStream(executionId, refreshKey)
   const base = useMemo(() => graphToFlow(workflow.graph_json), [workflow.id])
+  const [controlling, setControlling] = useState(false)
+
+  const handleControl = async (action: 'pause' | 'resume' | 'terminate') => {
+    setControlling(true)
+    try {
+      if (action === 'pause') await pauseExecution(executionId)
+      else if (action === 'resume') {
+        await resumeExecution(executionId)
+        setTimeout(() => setRefreshKey(k => k + 1), 500)
+      } else await terminateExecution(executionId)
+    } catch (e) {
+      console.error('Control action failed:', e)
+    } finally {
+      setControlling(false)
+    }
+  }
 
   // Inject live status into nodes and highlight fired edges.
   const nodes: Node[] = base.nodes.map((n) => ({
@@ -47,9 +64,49 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
         <span className="text-white text-sm font-medium">{workflow.name}</span>
         <StatusPill status={stream.status} />
         <div className="flex-1" />
-        <div className="flex items-center gap-4 text-xs text-white/50">
-          <span className="flex items-center gap-1.5"><Hash size={12} /> {stream.totalTokens.toLocaleString()} tok</span>
-          <span className="flex items-center gap-1.5"><Coins size={12} /> ${stream.totalCost.toFixed(4)}</span>
+        <div className="flex items-center gap-2">
+          {stream.totalTokens > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-white/50"><Hash size={12} /> {stream.totalTokens.toLocaleString()} tok</span>
+          )}
+          {stream.totalCost > 0 && (
+            <span className="flex items-center gap-1.5 text-xs text-white/50"><Coins size={12} /> ${stream.totalCost.toFixed(4)}</span>
+          )}
+          {(stream.status === 'running' || stream.status === 'pending') && (
+            <button
+              onClick={() => handleControl('pause')}
+              disabled={controlling}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-300 hover:bg-orange-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <Pause size={12} /> Pause
+            </button>
+          )}
+          {stream.status === 'paused' && (
+            <button
+              onClick={() => handleControl('resume')}
+              disabled={controlling}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> Resume
+            </button>
+          )}
+          {stream.status === 'failed' && (
+            <button
+              onClick={() => handleControl('resume')}
+              disabled={controlling}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> Retry
+            </button>
+          )}
+          {(stream.status === 'running' || stream.status === 'pending' || stream.status === 'paused') && (
+            <button
+              onClick={() => handleControl('terminate')}
+              disabled={controlling}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-300 hover:bg-red-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <Square size={12} /> Stop
+            </button>
+          )}
         </div>
       </div>
 
@@ -134,11 +191,12 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
 
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, { cls: string; icon: React.ReactNode; label: string }> = {
-    running: { cls: 'text-amber-300 bg-amber-500/10', icon: <Loader2 size={11} className="animate-spin" />, label: 'running' },
-    completed: { cls: 'text-emerald-300 bg-emerald-500/10', icon: <CheckCircle2 size={11} />, label: 'completed' },
-    failed: { cls: 'text-red-300 bg-red-500/10', icon: <XCircle size={11} />, label: 'failed' },
-    pending: { cls: 'text-white/50 bg-white/[0.06]', icon: <Loader2 size={11} className="animate-spin" />, label: 'pending' },
-    cancelled: { cls: 'text-white/40 bg-white/[0.06]', icon: <XCircle size={11} />, label: 'cancelled' },
+    running:   { cls: 'text-amber-300 bg-amber-500/10',   icon: <Loader2 size={11} className="animate-spin" />, label: 'running' },
+    completed: { cls: 'text-emerald-300 bg-emerald-500/10', icon: <CheckCircle2 size={11} />,                  label: 'completed' },
+    failed:    { cls: 'text-red-300 bg-red-500/10',        icon: <XCircle size={11} />,                        label: 'failed' },
+    pending:   { cls: 'text-white/50 bg-white/[0.06]',     icon: <Loader2 size={11} className="animate-spin" />, label: 'pending' },
+    paused:    { cls: 'text-orange-300 bg-orange-500/10',  icon: <Pause size={11} />,                          label: 'paused' },
+    cancelled: { cls: 'text-white/40 bg-white/[0.06]',     icon: <XCircle size={11} />,                        label: 'cancelled' },
   }
   const s = map[status] ?? map.pending
   return (

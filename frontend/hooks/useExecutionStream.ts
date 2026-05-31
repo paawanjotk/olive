@@ -45,7 +45,7 @@ const EMPTY: StreamState = {
   pendingApproval: null,
 }
 
-const TERMINAL: ExecutionStatus[] = ['completed', 'failed', 'cancelled']
+const TERMINAL: ExecutionStatus[] = ['completed', 'failed', 'cancelled', 'paused']
 
 function mapStepStatus(s: string): NodeStatus {
   if (s === 'completed') return 'completed'
@@ -98,8 +98,10 @@ function seedFromHistory(execution: WorkflowExecution, steps: WorkflowStep[]): P
 /** Subscribes to the workflow execution SSE stream and reduces events into
  * live state for the monitor (node statuses, fired edges, streamed output,
  * token/cost totals, event log). Seeds from persisted state first so historical
- * and externally-triggered runs render even with no live events. */
-export function useExecutionStream(executionId: string | null): StreamState {
+ * and externally-triggered runs render even with no live events.
+ *
+ * Pass a different `refreshKey` to force re-subscription (e.g. after resume). */
+export function useExecutionStream(executionId: string | null, refreshKey = 0): StreamState {
   const [state, setState] = useState<StreamState>(EMPTY)
   const lastNode = useRef<string | null>(null)
   const logSeq = useRef(0)
@@ -214,6 +216,10 @@ export function useExecutionStream(executionId: string | null): StreamState {
               next.error = ev.error
               next.logs = log(s, ev.type, `workflow failed: ${ev.error}`)
               break
+            case 'execution_paused':
+              next.status = 'paused'
+              next.logs = log(s, ev.type, `workflow paused`)
+              break
             case 'execution_started':
               next.logs = log(s, ev.type, `execution started`)
               break
@@ -223,7 +229,7 @@ export function useExecutionStream(executionId: string | null): StreamState {
           return next
         })
 
-        if (ev.type === 'execution_completed' || ev.type === 'execution_failed') {
+        if (ev.type === 'execution_completed' || ev.type === 'execution_failed' || ev.type === 'execution_paused') {
           es?.close()
         }
       }
@@ -235,7 +241,7 @@ export function useExecutionStream(executionId: string | null): StreamState {
       cancelled = true
       es?.close()
     }
-  }, [executionId])
+  }, [executionId, refreshKey])
 
   return state
 }

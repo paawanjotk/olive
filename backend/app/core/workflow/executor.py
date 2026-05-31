@@ -116,7 +116,32 @@ async def _post_slack_workflow_start(
         logger.warning("Slack workflow start post failed: %s", e)
 
 
+async def _load_prior_outputs(execution_id: str) -> dict[str, str]:
+    """For resume: seed node_outputs from steps that already completed in a prior run.
+    Returns empty dict for fresh executions (no completed steps yet)."""
+    from app.db.models.workflows import WorkflowStep
+    async with get_session_factory()() as db:
+        steps = (await db.execute(
+            select(WorkflowStep).where(
+                WorkflowStep.execution_id == uuid.UUID(execution_id),
+                WorkflowStep.status == "completed",
+            ).order_by(WorkflowStep.completed_at)
+        )).scalars().all()
+    return {s.node_id: (s.output or {}).get("text", "") for s in steps if s.output}
+
+
+async def _set_paused(execution_id: str) -> None:
+    async with get_session_factory()() as db:
+        ex = (await db.execute(
+            select(WorkflowExecution).where(WorkflowExecution.id == uuid.UUID(execution_id))
+        )).scalar_one()
+        ex.status = "paused"
+        await db.commit()
+
+
 async def run_workflow_execution(execution_id: str) -> None:
+    from app.services.execution_control import PauseSignal, TerminateSignal
+
     bus = EventBus(execution_id)
     try:
         ex, wf = await _load(execution_id)
@@ -141,13 +166,13 @@ async def run_workflow_execution(execution_id: str) -> None:
             nid, ntype = n["id"], (n.get("type") or "agent")
             if ntype in ("trigger", "start", "end"):
                 continue
+            node_data = n.get("data") or {}
             if ntype == "checkpoint":
-                data = n.get("data", {}) or {}
                 node_fn_map[nid] = make_checkpoint_node(
                     nid, bus,
-                    approval_mode=data.get("approval_mode", "web"),
+                    approval_mode=node_data.get("approval_mode", "web"),
                     trigger_context=trigger_context,
-                    label=data.get("label", "Human checkpoint"),
+                    label=node_data.get("label", "Human checkpoint"),
                 )
             elif ntype == "supervisor":
                 agent = agents.get(nid)
@@ -157,12 +182,18 @@ async def run_workflow_execution(execution_id: str) -> None:
                     nid, agent, _worker_specs(graph_json, nid, agents), bus,
                     end_node_id=end_node_id,
                     trigger_context=trigger_context,
+                    node_data=node_data,
                 )
             else:  # agent
                 agent = agents.get(nid)
                 if agent is None:
                     raise ValueError(f"Agent node '{nid}' has no agent assigned")
-                node_fn_map[nid] = make_agent_node(nid, agent, bus, trigger_context=trigger_context)
+                node_fn_map[nid] = make_agent_node(
+                    nid, agent, bus,
+                    trigger_context=trigger_context,
+                    node_data=node_data,
+                    max_retries=int(node_data.get("max_retries", 1)),
+                )
 
         if not node_fn_map:
             raise ValueError("Workflow has no executable nodes")
@@ -170,11 +201,13 @@ async def run_workflow_execution(execution_id: str) -> None:
         compiled = build_graph(graph_json, node_fn_map)
 
         input_text = (ex.input_data or {}).get("input", "")
+        # Pre-populate node_outputs from prior completed steps (non-empty only when resuming).
+        prior_outputs = await _load_prior_outputs(execution_id)
         initial: dict = {
             "execution_id": execution_id,
             "original_input": input_text,
             "messages": [{"role": "user", "content": input_text}],
-            "node_outputs": {},
+            "node_outputs": prior_outputs,
             "next": "",
             "iterations": 0,
         }
@@ -194,6 +227,14 @@ async def run_workflow_execution(execution_id: str) -> None:
 
         await bus.publish("execution_completed", output=final_output)
 
+    except PauseSignal:
+        logger.info("Workflow execution %s paused", execution_id)
+        await _set_paused(execution_id)
+        await bus.publish("execution_paused")
+    except TerminateSignal:
+        logger.info("Workflow execution %s terminated", execution_id)
+        await _finalize(execution_id, "cancelled", None, "Terminated by user")
+        await bus.publish("execution_failed", error="Terminated by user")
     except Exception as e:
         logger.exception("Workflow execution %s failed", execution_id)
         await _finalize(execution_id, "failed", None, str(e))

@@ -134,7 +134,9 @@ async def stream_execution(
                     data = data.decode()
                 yield f"data: {data}\n\n"
                 try:
-                    if json.loads(data).get("type") in ("execution_completed", "execution_failed"):
+                    if json.loads(data).get("type") in (
+                        "execution_completed", "execution_failed", "execution_paused",
+                    ):
                         break
                 except (json.JSONDecodeError, AttributeError):
                     pass
@@ -164,6 +166,42 @@ async def approve_checkpoint(
         await r.expire(approval_key, 60)
     finally:
         await r.aclose()
+
+
+@router.post("/executions/{execution_id}/pause")
+async def pause_execution(
+    execution_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    from app.services.execution_control import pause_execution as _pause
+    result = await _pause(str(execution_id), _uid(current_user))
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/executions/{execution_id}/resume")
+async def resume_execution(
+    execution_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    from app.services.execution_control import resume_execution as _resume
+    result = await _resume(str(execution_id), _uid(current_user))
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+
+@router.post("/executions/{execution_id}/terminate")
+async def terminate_execution(
+    execution_id: uuid.UUID,
+    current_user: dict = Depends(get_current_user),
+):
+    from app.services.execution_control import terminate_execution as _terminate
+    result = await _terminate(str(execution_id), _uid(current_user))
+    if "error" in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
 
 
 @router.post("/executions/{execution_id}/cancel", status_code=204)

@@ -241,6 +241,18 @@ export async function cancelExecution(executionId: string): Promise<void> {
   return apiRequest<void>(`/workflows/executions/${executionId}/cancel`, { method: 'POST' })
 }
 
+export async function pauseExecution(executionId: string): Promise<void> {
+  return apiRequest<void>(`/workflows/executions/${executionId}/pause`, { method: 'POST' })
+}
+
+export async function resumeExecution(executionId: string): Promise<void> {
+  return apiRequest<void>(`/workflows/executions/${executionId}/resume`, { method: 'POST' })
+}
+
+export async function terminateExecution(executionId: string): Promise<void> {
+  return apiRequest<void>(`/workflows/executions/${executionId}/terminate`, { method: 'POST' })
+}
+
 export async function approveCheckpoint(
   executionId: string,
   nodeId: string,

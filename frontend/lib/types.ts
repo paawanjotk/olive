@@ -127,7 +127,7 @@ export interface WorkflowTemplate {
 }
 
 export type ExecutionStatus =
-  | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  | 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused'
 
 export interface WorkflowExecution {
   id: string
@@ -174,6 +174,7 @@ export type ExecutionEvent =
   | { type: 'output_sent'; execution_id: string; platform: string; chat_id: string; ts: string }
   | { type: 'execution_completed'; execution_id: string; output: string; ts: string }
   | { type: 'execution_failed'; execution_id: string; error: string; ts: string }
+  | { type: 'execution_paused'; execution_id: string; ts: string }
 
 export interface ExecutionWithWorkflow extends WorkflowExecution {
   workflow_name: string

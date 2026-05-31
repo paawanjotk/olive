@@ -3,9 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import {
   Activity, RefreshCw, Loader2, AlertCircle, Clock, CheckCircle2,
-  XCircle, Pause, ChevronRight, BarChart2, ArrowLeft, Play,
+  XCircle, Pause, ChevronRight, BarChart2, ArrowLeft, Play, Square, RotateCcw,
 } from 'lucide-react'
-import { listAllExecutions, getExecutionSteps, approveCheckpoint } from '@/lib/api'
+import { listAllExecutions, getExecutionSteps, approveCheckpoint, pauseExecution, resumeExecution, terminateExecution } from '@/lib/api'
 import type { ExecutionWithWorkflow, WorkflowStep } from '@/lib/types'
 import { cn } from '@/lib/utils'
 import { useExecutionStream } from '@/hooks/useExecutionStream'
@@ -14,11 +14,12 @@ import { useExecutionStream } from '@/hooks/useExecutionStream'
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { icon: React.ElementType; color: string; label: string }> = {
-    running:   { icon: Loader2,      color: 'text-blue-400 bg-blue-400/10',      label: 'Running' },
+    running:   { icon: Loader2,      color: 'text-blue-400 bg-blue-400/10',       label: 'Running' },
     completed: { icon: CheckCircle2, color: 'text-emerald-400 bg-emerald-400/10', label: 'Completed' },
-    failed:    { icon: XCircle,      color: 'text-red-400 bg-red-400/10',         label: 'Failed' },
-    pending:   { icon: Clock,        color: 'text-yellow-400 bg-yellow-400/10',   label: 'Pending' },
-    cancelled: { icon: Pause,        color: 'text-white/40 bg-white/[0.06]',      label: 'Cancelled' },
+    failed:    { icon: XCircle,      color: 'text-red-400 bg-red-400/10',          label: 'Failed' },
+    pending:   { icon: Clock,        color: 'text-yellow-400 bg-yellow-400/10',    label: 'Pending' },
+    paused:    { icon: Pause,        color: 'text-orange-400 bg-orange-400/10',    label: 'Paused' },
+    cancelled: { icon: Square,       color: 'text-white/40 bg-white/[0.06]',       label: 'Cancelled' },
   }
   const { icon: Icon, color, label } = map[status] ?? map.pending
   return (
@@ -67,13 +68,16 @@ function fmtTime(ts: string | null): string {
 function ExecutionDetail({
   execution,
   onBack,
+  onRefresh,
 }: {
   execution: ExecutionWithWorkflow
   onBack: () => void
+  onRefresh: (id: string) => void
 }) {
   const [steps, setSteps] = useState<WorkflowStep[]>([])
   const [loadingSteps, setLoadingSteps] = useState(true)
   const [approving, setApproving] = useState(false)
+  const [controlling, setControlling] = useState(false)
 
   const streamState = useExecutionStream(
     execution.status === 'running' ? execution.id : null
@@ -98,9 +102,26 @@ function ExecutionDetail({
     }
   }
 
+  const handleControl = async (action: 'pause' | 'resume' | 'terminate') => {
+    setControlling(true)
+    try {
+      if (action === 'pause') await pauseExecution(execution.id)
+      else if (action === 'resume') await resumeExecution(execution.id)
+      else await terminateExecution(execution.id)
+      onRefresh(execution.id)
+    } catch (e) {
+      console.error('Control action failed:', e)
+    } finally {
+      setControlling(false)
+    }
+  }
+
   const output = execution.output_data?.output || ''
   const combinedCost = totalCost || (steps.reduce((acc, s) => acc + ((s.output?.usage?.cost_usd) || 0), 0))
   const combinedTokens = totalTokens || (steps.reduce((acc, s) => acc + ((s.output?.usage?.input_tokens || 0) + (s.output?.usage?.output_tokens || 0)), 0))
+
+  const isActive = execution.status === 'running' || execution.status === 'pending'
+  const isPaused = execution.status === 'paused'
 
   return (
     <div className="flex flex-col h-full bg-[#0d0d0d]">
@@ -117,10 +138,50 @@ function ExecutionDetail({
           </div>
           <p className="text-white/35 text-xs mt-0.5 font-mono">{execution.id.slice(0, 16)}…</p>
         </div>
-        <div className="flex items-center gap-4 text-xs text-white/40 shrink-0">
-          {combinedTokens > 0 && <span className="font-mono">{combinedTokens.toLocaleString()} tok</span>}
-          {combinedCost > 0 && <span className="font-mono text-emerald-400/70">${combinedCost.toFixed(5)}</span>}
-          <span>{fmtDuration(execution.started_at, execution.completed_at)}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {combinedTokens > 0 && <span className="text-xs font-mono text-white/40">{combinedTokens.toLocaleString()} tok</span>}
+          {combinedCost > 0 && <span className="text-xs font-mono text-emerald-400/70">${combinedCost.toFixed(5)}</span>}
+          <span className="text-xs text-white/40">{fmtDuration(execution.started_at, execution.completed_at)}</span>
+          {isActive && (
+            <button
+              onClick={() => handleControl('pause')}
+              disabled={controlling}
+              title="Pause at next node boundary"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/15 text-orange-400 hover:bg-orange-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <Pause size={12} /> Pause
+            </button>
+          )}
+          {isPaused && (
+            <button
+              onClick={() => handleControl('resume')}
+              disabled={controlling}
+              title="Resume from where it paused"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> Resume
+            </button>
+          )}
+          {(execution.status === 'failed') && (
+            <button
+              onClick={() => handleControl('resume')}
+              disabled={controlling}
+              title="Retry — completed steps are skipped"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 hover:bg-blue-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <RotateCcw size={12} /> Retry
+            </button>
+          )}
+          {(isActive || isPaused) && (
+            <button
+              onClick={() => handleControl('terminate')}
+              disabled={controlling}
+              title="Stop immediately and cancel"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs font-medium disabled:opacity-40"
+            >
+              <Square size={12} /> Stop
+            </button>
+          )}
         </div>
       </div>
 
@@ -276,11 +337,12 @@ export default function MonitoringPanel() {
       <ExecutionDetail
         execution={selected}
         onBack={() => { setSelected(null); load() }}
+        onRefresh={() => load()}
       />
     )
   }
 
-  const running   = executions.filter((e) => e.status === 'running' || e.status === 'pending')
+  const running   = executions.filter((e) => ['running', 'pending', 'paused'].includes(e.status))
   const completed = executions.filter((e) => e.status === 'completed')
   const failed    = executions.filter((e) => e.status === 'failed' || e.status === 'cancelled')
   const totalCost = executions.reduce((acc, e) => acc + (((e.output_data as Record<string, unknown>)?.cost_usd as number) || 0), 0)

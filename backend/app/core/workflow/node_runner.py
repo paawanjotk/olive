@@ -2,6 +2,7 @@
 LangGraph calls with the shared WorkflowState. Nodes run agents via the existing
 run_agent_turn loop, persist a workflow_steps row, stream chunks over the event
 bus, and return a state delta."""
+import asyncio
 import json
 import logging
 import re
@@ -78,15 +79,20 @@ async def _finish_step(step_id: uuid.UUID, status: str, output: dict, error: str
         await db.commit()
 
 
-async def _run_agent(config: AgentConfig, prompt: str, node_id: str, bus: EventBus) -> str:
+async def _run_agent(
+    config: AgentConfig, prompt: str, node_id: str, bus: EventBus,
+    cancel_event: asyncio.Event | None = None,
+) -> str:
     """Drive run_agent_turn, streaming chunks/tool events over the bus, return text."""
     messages = [{"role": "user", "content": prompt}]
     collected: list[str] = []
     async for event in run_agent_turn(
         messages=messages,
         agent_config=config,
-        session_id=None, user_id=None, conversation_id=None, cancel_event=None,
+        session_id=None, user_id=None, conversation_id=None, cancel_event=cancel_event,
     ):
+        if cancel_event and cancel_event.is_set():
+            break  # signal arrived mid-run — stop collecting, raise below
         etype = event.get("type")
         if etype == "chunk":
             collected.append(event["content"])
@@ -103,7 +109,6 @@ async def _run_agent(config: AgentConfig, prompt: str, node_id: str, bus: EventB
 
 
 async def _post_slack_progress(trigger_context: dict | None, message: str) -> None:
-    """Post a progress update to the Slack thread if the run was triggered from Slack."""
     if not trigger_context or trigger_context.get("platform") != "slack":
         return
     channel_id = trigger_context.get("channel_id")
@@ -117,29 +122,142 @@ async def _post_slack_progress(trigger_context: dict | None, message: str) -> No
         logger.warning("Slack progress post failed: %s", e)
 
 
-def make_agent_node(node_id: str, agent, bus: EventBus, trigger_context: dict | None = None) -> Callable:
-    """A worker node: runs the agent on the task + prior work, returns its output."""
-    config = AgentConfig.from_db(agent)
+async def _check_control(execution_id: str, node_id: str, bus: EventBus) -> None:
+    """Raise PauseSignal or TerminateSignal if a control signal is pending."""
+    from app.services.execution_control import get_signal, PauseSignal, TerminateSignal
+    signal = await get_signal(execution_id)
+    if signal == "terminate":
+        await bus.publish("node_failed", node_id=node_id, error="Terminated by user")
+        raise TerminateSignal()
+    if signal == "pause":
+        await bus.publish("node_failed", node_id=node_id, error="Paused by user")
+        raise PauseSignal()
+
+
+async def _run_with_retry(
+    fn, node_id: str, bus: EventBus, max_retries: int = 1
+) -> str:
+    """Run fn() with exponential-backoff retry. PauseSignal/TerminateSignal always propagate."""
+    import asyncio
+    from app.services.execution_control import PauseSignal, TerminateSignal
+    last_exc: Exception | None = None
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn()
+        except (PauseSignal, TerminateSignal):
+            raise  # never retry on control signals
+        except Exception as e:
+            last_exc = e
+            if attempt < max_retries:
+                delay = 2.0 * (2 ** attempt)
+                logger.warning("Node %s failed (attempt %d/%d), retrying in %.1fs: %s",
+                               node_id, attempt + 1, max_retries + 1, delay, e)
+                await bus.publish("tool_start", node_id=node_id,
+                                  tool_name="retry", tool_input={"attempt": attempt + 1, "delay": delay})
+                await asyncio.sleep(delay)
+                await bus.publish("tool_end", node_id=node_id,
+                                  tool_name="retry", tool_result=f"Retrying (attempt {attempt + 2})")
+    raise last_exc  # type: ignore[misc]
+
+
+def _apply_node_overrides(base_config: AgentConfig, node_data: dict) -> AgentConfig:
+    """Merge per-node config overrides (from graph_json node.data) onto the base agent config."""
+    from dataclasses import replace
+    overrides: dict = {}
+    for field, key in [
+        ("system_prompt", "system_prompt"),
+        ("model", "model"),
+        ("provider", "provider"),
+        ("temperature", "temperature"),
+        ("max_tokens", "max_tokens"),
+        ("max_iterations", "max_iterations"),
+        ("soul_md", "soul_md"),
+        ("memory_md", "memory_md"),
+    ]:
+        val = node_data.get(key)
+        if val is not None and val != "":
+            overrides[field] = val
+    # tools override: only apply if the list is non-empty in node_data
+    tools = node_data.get("tools")
+    if isinstance(tools, list) and tools:
+        overrides["tools"] = tools
+    return replace(base_config, **overrides) if overrides else base_config
+
+
+def make_agent_node(
+    node_id: str, agent, bus: EventBus,
+    trigger_context: dict | None = None,
+    node_data: dict | None = None,
+    max_retries: int = 1,
+) -> Callable:
+    """A worker node: runs the agent on the task + prior work, returns its output.
+
+    node_data: the graph_json node.data dict — allows per-node config overrides
+    (system_prompt, model, tools, temperature, etc.) on top of the base agent.
+    max_retries: automatic retry count on transient failures (default=1).
+    """
+    base_config = AgentConfig.from_db(agent)
+    config = _apply_node_overrides(base_config, node_data or {})
+
+    from app.services.execution_control import PauseSignal, TerminateSignal
 
     async def node_fn(state: WorkflowState) -> dict:
-        prompt = _build_task_prompt(state["original_input"], state.get("node_outputs", {}))
-        step_id = await _new_step(state["execution_id"], node_id, agent.id, prompt)
+        execution_id = state["execution_id"]
+
+        # Upfront control check (catches signals set before the node starts)
+        await _check_control(execution_id, node_id, bus)
+
+        current_outputs: dict[str, str] = dict(state.get("node_outputs") or {})
+        prompt = _build_task_prompt(state["original_input"], current_outputs)
+        step_id = await _new_step(execution_id, node_id, agent.id, prompt)
         await bus.publish("node_started", node_id=node_id, label=agent.name, role="agent")
 
+        # Background poller: sets cancel_event as soon as a Redis signal appears.
+        # This makes pause/terminate responsive mid-LLM-call (~1 s latency).
+        cancel_event = asyncio.Event()
+
+        async def _watch_signal() -> None:
+            from app.services.execution_control import get_signal
+            while not cancel_event.is_set():
+                await asyncio.sleep(1)
+                if await get_signal(execution_id):
+                    cancel_event.set()
+
+        watcher = asyncio.create_task(_watch_signal())
+
         try:
-            output = await _run_agent(config, prompt, node_id, bus)
+            output = await _run_with_retry(
+                lambda: _run_agent(config, prompt, node_id, bus, cancel_event),
+                node_id=node_id, bus=bus, max_retries=max_retries,
+            )
+            # If the watcher set cancel_event during the run, raise the right signal now.
+            if cancel_event.is_set():
+                await _check_control(execution_id, node_id, bus)
+
             usage = _estimate(config.model, len(prompt), len(output))
             await _finish_step(step_id, "completed", {"text": output, "usage": usage}, None)
             await bus.publish("node_completed", node_id=node_id, output=output, usage=usage)
             await _post_slack_progress(trigger_context, f"✅ *{agent.name}* completed")
+        except (PauseSignal, TerminateSignal):
+            await _finish_step(step_id, "failed", {"text": ""}, "Execution paused/terminated")
+            raise
         except Exception as e:
-            logger.exception("Agent node %s failed", node_id)
+            logger.exception("Agent node %s failed after retries", node_id)
             await _finish_step(step_id, "failed", {"text": ""}, str(e))
             await bus.publish("node_failed", node_id=node_id, error=str(e))
             output = ""
+        finally:
+            cancel_event.set()  # stop the watcher regardless of outcome
+            watcher.cancel()
 
-        new_outputs = dict(state.get("node_outputs", {}))
-        new_outputs[node_id] = output
+        # Accumulate: when supervisor routes to the same node multiple times,
+        # append each run so the supervisor sees the full body of work.
+        prev = current_outputs.get(node_id, "")
+        new_outputs = dict(current_outputs)
+        if prev and output:
+            new_outputs[node_id] = prev + "\n\n" + output
+        else:
+            new_outputs[node_id] = output or prev
         return {
             "node_outputs": new_outputs,
             "messages": [{"role": "assistant", "content": f"[{node_id}] {output}"}],
@@ -152,6 +270,7 @@ def make_supervisor_node(
     node_id: str, agent, worker_specs: list[dict], bus: EventBus,
     max_iterations: int = 8, end_node_id: str = "end",
     trigger_context: dict | None = None,
+    node_data: dict | None = None,
 ) -> Callable:
     """A router node: an LLM decides which worker acts next, or DONE. Writes the
     decision to state['next'], which the conditional edge reads. worker_specs is
@@ -159,8 +278,9 @@ def make_supervisor_node(
 
     end_node_id: the actual graph node id for the end node (used in events so the
     UI can mark it as the target instead of the LangGraph sentinel "__end__")."""
+    from app.services.execution_control import PauseSignal, TerminateSignal
+    base = _apply_node_overrides(AgentConfig.from_db(agent), node_data or {})
     # Supervisor never uses tools — it only decides routing.
-    base = AgentConfig.from_db(agent)
     config = AgentConfig(
         name=base.name, system_prompt=base.system_prompt, model=base.model,
         provider=base.provider, temperature=0.0, max_tokens=512, max_iterations=1,
@@ -169,6 +289,11 @@ def make_supervisor_node(
     roster = "\n".join(f'- "{w["id"]}": {w.get("label", w["id"])} — {w.get("description","")}' for w in worker_specs)
 
     async def node_fn(state: WorkflowState) -> dict:
+        execution_id = state["execution_id"]
+
+        # Control signal check before doing any work
+        await _check_control(execution_id, node_id, bus)
+
         iterations = state.get("iterations", 0) + 1
         await bus.publish("node_started", node_id=node_id, label=agent.name, role="supervisor")
 
@@ -191,11 +316,14 @@ def make_supervisor_node(
             f'{{"next": "<worker_id>" | "done", "reason": "<one short sentence>"}}'
         )
 
-        step_id = await _new_step(state["execution_id"], node_id, agent.id, routing_prompt)
+        step_id = await _new_step(execution_id, node_id, agent.id, routing_prompt)
         try:
             raw = await _run_agent(config, routing_prompt, node_id, bus)
             decision = _parse_decision(raw, [w["id"] for w in worker_specs])
             await _finish_step(step_id, "completed", {"text": raw, "decision": decision}, None)
+        except (PauseSignal, TerminateSignal):
+            await _finish_step(step_id, "failed", {"text": ""}, "Execution control signal")
+            raise
         except Exception as e:
             logger.exception("Supervisor node %s failed", node_id)
             await _finish_step(step_id, "failed", {"text": ""}, str(e))
@@ -271,6 +399,9 @@ def make_checkpoint_node(
         import json
         import redis.asyncio as aioredis
         from app.core.config import settings
+
+        # Control signal check before blocking on approval
+        await _check_control(state["execution_id"], node_id, bus)
 
         await bus.publish("node_started", node_id=node_id, label=label, role="checkpoint")
         latest = list(state.get("node_outputs", {}).values())
