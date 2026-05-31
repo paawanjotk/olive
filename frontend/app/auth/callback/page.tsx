@@ -9,37 +9,61 @@ export default function AuthCallbackPage() {
   const router = useRouter()
 
   useEffect(() => {
+    let done = false
+    let unsubscribe: (() => void) | null = null
+
+    const finish = async (accessToken: string) => {
+      if (done) return
+      done = true
+      unsubscribe?.()
+      try {
+        await syncUser(accessToken)
+      } catch (e) {
+        console.error('Sync failed:', e)
+      }
+      router.replace('/')
+    }
+
     const handle = async () => {
       const params = new URL(window.location.href).searchParams
-      const code = params.get('code')
       const error = params.get('error')
-
       if (error) {
         console.error('OAuth error:', error)
         router.replace('/login')
         return
       }
 
-      if (code) {
-        await supabase.auth.exchangeCodeForSession(code)
-      }
+      // Don't manually exchange the code — detectSessionInUrl already does it.
+      // A second exchange races with the auto-detect and throws (PKCE codes
+      // are one-time-use), aborting this handler before syncUser runs.
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(
+        (_event, session) => {
+          if (session?.access_token) finish(session.access_token)
+        },
+      )
+      unsubscribe = () => subscription.unsubscribe()
 
-      // Read the session after exchange — reliable even if detectSessionInUrl
-      // already consumed the code before this useEffect ran.
+      // Cover the case where auto-detect finished before the listener attached.
       const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) finish(session.access_token)
 
-      if (session?.access_token) {
-        try {
-          await syncUser(session.access_token)
-        } catch (e) {
-          console.error('Sync failed:', e)
+      // Fail-safe: if neither the listener nor getSession produced a session
+      // within a few seconds, bail back to login rather than spinning forever.
+      setTimeout(() => {
+        if (!done) {
+          console.error('Auth callback timed out without a session')
+          done = true
+          unsubscribe?.()
+          router.replace('/login')
         }
-      }
-
-      router.replace('/')
+      }, 8000)
     }
 
     handle()
+    return () => {
+      done = true
+      unsubscribe?.()
+    }
   }, [router])
 
   return (

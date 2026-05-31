@@ -3,6 +3,23 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { syncUser } from '@/lib/api'
+
+const SYNCED_KEY = 'ollive-user-synced'
+
+async function ensureSynced(session: Session | null) {
+  if (typeof window === 'undefined') return
+  const token = session?.access_token
+  const uid = session?.user?.id
+  if (!token || !uid) return
+  if (sessionStorage.getItem(SYNCED_KEY) === uid) return
+  try {
+    await syncUser(token)
+    sessionStorage.setItem(SYNCED_KEY, uid)
+  } catch (e) {
+    console.error('Background user sync failed:', e)
+  }
+}
 
 interface AuthContextValue {
   session: Session | null
@@ -20,15 +37,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Restore session on mount — just read, no sync.
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoading(false)
+      ensureSynced(data.session)
     })
 
-    // Keep session state in sync (token refresh, sign-out, etc.) — no backend calls here.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       setSession(s)
+      if (event === 'SIGNED_IN') ensureSynced(s)
     })
 
     return () => subscription.unsubscribe()
@@ -46,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut()
+    if (typeof window !== 'undefined') sessionStorage.removeItem(SYNCED_KEY)
     setSession(null)
   }
 
