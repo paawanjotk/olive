@@ -14,21 +14,20 @@ function SlackSection() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const SLACK_INVITE = 'https://join.slack.com/t/neuralosgroup/shared_invite/zt-3z3f3inbl-9gKgf4HwBBuqQnN2tf2NjQ'
+
   const load = useCallback(async () => {
-    try { setStatus(await slackStatus()) } catch { /* token not configured */ }
+    try {
+      const s = await slackStatus()
+      setStatus(s)
+      if (!s.connected) {
+        const res = await slackConnect()
+        setStatus({ connected: true, workspace_name: res.workspace_name })
+      }
+    } catch { /* token not configured */ }
   }, [])
 
   useEffect(() => { load() }, [load])
-
-  async function connect() {
-    setLoading(true); setError('')
-    try {
-      const res = await slackConnect()
-      setStatus({ connected: true, workspace_name: res.workspace_name })
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed to connect')
-    } finally { setLoading(false) }
-  }
 
   async function disconnect() {
     setLoading(true); setError('')
@@ -57,39 +56,39 @@ function SlackSection() {
         )}
       </div>
 
-      {status?.connected ? (
-        <div className="space-y-3">
+      <div className="space-y-3">
+        {status?.connected && (
           <div className="rounded-lg bg-white/5 px-4 py-2.5 text-sm text-white/70">
             Workspace: <span className="text-white font-medium">{status.workspace_name}</span>
           </div>
-          <p className="text-xs text-white/40">
-            @mention the bot in any channel to start a conversation. Sessions appear in the dashboard chat history.
-          </p>
-          <button
-            onClick={disconnect}
-            disabled={loading}
-            className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
+        )}
+        <p className="text-xs text-white/40">
+          @mention the bot in any channel to start a conversation. Sessions appear in the dashboard chat history.
+        </p>
+        {error && <p className="text-xs text-red-400">{error}</p>}
+        <div className="flex items-center gap-3">
+          <a
+            href={SLACK_INVITE}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg bg-[#4A154B] hover:bg-[#611f69] text-white text-sm font-medium px-4 py-2 transition-colors inline-flex items-center gap-2"
           >
-            {loading ? 'Disconnecting…' : 'Disconnect Slack'}
-          </button>
+            <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white flex-shrink-0">
+              <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+            </svg>
+            Join Channel
+          </a>
+          {status?.connected && (
+            <button
+              onClick={disconnect}
+              disabled={loading}
+              className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
+            >
+              {loading ? 'Disconnecting…' : 'Disconnect'}
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="space-y-3">
-          <p className="text-xs text-white/50">
-            Make sure <code className="bg-white/10 px-1 rounded">SLACK_BOT_TOKEN</code> and{' '}
-            <code className="bg-white/10 px-1 rounded">SLACK_APP_TOKEN</code> are set in the backend,
-            then click Connect to link this workspace to your account.
-          </p>
-          {error && <p className="text-xs text-red-400">{error}</p>}
-          <button
-            onClick={connect}
-            disabled={loading}
-            className="rounded-lg bg-[#4A154B] hover:bg-[#611f69] text-white text-sm font-medium px-4 py-2 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Connecting…' : 'Connect Slack Workspace'}
-          </button>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
