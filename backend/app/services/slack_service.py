@@ -143,6 +143,35 @@ def strip_mentions(text: str) -> str:
     return re.sub(r"<@[A-Z0-9]+>", "", text or "").strip()
 
 
+async def list_channels() -> list[dict]:
+    """Return all channels the bot can see: [{id, name}, ...].
+
+    Requires channels:read (public) and groups:read (private) scopes.
+    Returns an empty list if the token lacks those scopes or Slack is unreachable.
+    """
+    if not settings.SLACK_BOT_TOKEN:
+        return []
+    result: list[dict] = []
+    cursor: str | None = None
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        while True:
+            params: dict = {"types": "public_channel,private_channel", "limit": 200, "exclude_archived": "true"}
+            if cursor:
+                params["cursor"] = cursor
+            resp = await client.get(_API.format(method="conversations.list"), params=params, headers=_headers())
+            data = resp.json()
+            if not data.get("ok"):
+                logger.warning("Slack conversations.list failed: %s", data.get("error"))
+                break
+            for ch in data.get("channels", []):
+                result.append({"id": ch["id"], "name": ch.get("name", ch["id"])})
+            cursor = data.get("response_metadata", {}).get("next_cursor") or None
+            if not cursor:
+                break
+    result.sort(key=lambda c: c["name"])
+    return result
+
+
 async def format_thread_for_prompt(messages: list[dict]) -> str:
     """Render thread messages as 'Name: message' lines, resolving user names and
     stripping raw mention tokens so the LLM reads clean conversational text."""

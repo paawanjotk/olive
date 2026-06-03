@@ -14,7 +14,7 @@ import {
 } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { styleEdges, graphToFlow, flowToGraph } from '@/lib/workflowGraph'
-import { listExecutions, listSchedules, createSchedule, deleteSchedule, getMCPConnections } from '@/lib/api'
+import { listExecutions, listSchedules, createSchedule, deleteSchedule, getMCPConnections, listSlackChannels } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Agent, MCPConnection, Workflow, WorkflowExecution, WorkflowSchedule } from '@/lib/types'
 
@@ -43,6 +43,8 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
   const [runInput, setRunInput] = useState('')
   const [inspectorTab, setInspectorTab] = useState<'node' | 'channels' | 'runs'>('node')
   const [channelConfig, setChannelConfig] = useState<any>(workflow.graph_json.channel_config ?? {})
+  const [slackChannels, setSlackChannels] = useState<{ id: string; name: string }[]>([])
+  const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
 
   // Warn if this workflow's Slack channel is already claimed by a different one.
   const slackChannelId = channelConfig.slack?.channel_id
@@ -273,16 +275,45 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
                       </p>
                     </Field>
                     {needsSlack && (
-                      <Field label="Slack channel ID">
-                        <input
-                          value={(selected.data.slack_channel_id as string) ?? ''}
-                          onChange={(e) => updateSelected({ slack_channel_id: e.target.value })}
-                          placeholder="C0123ABCDEF  (required for Slack approval)"
-                          className="builder-input text-[12px]"
-                        />
+                      <Field label="Slack channel">
+                        {slackChannels.length > 0 ? (
+                          <select
+                            value={(selected.data.slack_channel_id as string) ?? ''}
+                            onChange={(e) => updateSelected({ slack_channel_id: e.target.value })}
+                            className="builder-input"
+                          >
+                            <option value="" className="bg-[#1a1a1a]">— select channel —</option>
+                            {slackChannels.map((ch) => (
+                              <option key={ch.id} value={ch.id} className="bg-[#1a1a1a]">
+                                #{ch.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="flex gap-1.5">
+                            <input
+                              value={(selected.data.slack_channel_id as string) ?? ''}
+                              onChange={(e) => updateSelected({ slack_channel_id: e.target.value })}
+                              placeholder="C0123ABCDEF"
+                              className="builder-input text-[12px] flex-1"
+                            />
+                            <button
+                              onClick={async () => {
+                                setSlackChannelsLoading(true)
+                                const chs = await listSlackChannels()
+                                setSlackChannels(chs)
+                                setSlackChannelsLoading(false)
+                              }}
+                              disabled={slackChannelsLoading}
+                              className="px-2 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] text-white/70 shrink-0 disabled:opacity-50"
+                              title="Load channels from Slack"
+                            >
+                              {slackChannelsLoading ? <Loader2 size={12} className="animate-spin" /> : 'Browse'}
+                            </button>
+                          </div>
+                        )}
                         <p className="text-[10px] text-white/25 mt-1 leading-snug">
                           Approval card is posted here regardless of how the workflow was triggered.
-                          Find the ID in Slack: right-click channel → View channel details.
                         </p>
                       </Field>
                     )}

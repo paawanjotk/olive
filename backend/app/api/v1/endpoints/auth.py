@@ -31,6 +31,18 @@ async def sync_user(
     result = await db.execute(sa.select(User).where(User.id == user_id))
     existing = result.scalar_one_or_none()
 
+    if not existing:
+        # Fallback: email exists under a different (stale) UUID — Supabase re-issue
+        result = await db.execute(sa.select(User).where(User.email == email))
+        stale = result.scalar_one_or_none()
+        if stale:
+            logger.warning(
+                "UUID mismatch for %s: DB has %s, JWT has %s — purging stale user",
+                email, stale.id, user_id,
+            )
+            await db.delete(stale)
+            await db.commit()
+
     if existing:
         # Refresh name/email in case they changed in Supabase
         existing.name = name

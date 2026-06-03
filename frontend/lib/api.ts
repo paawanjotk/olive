@@ -342,6 +342,14 @@ export const slackConnect    = () => channelConnect('slack')
 export const slackStatus     = () => channelStatus('slack') as Promise<{ connected: boolean; workspace_name?: string; team_id?: string }>
 export const slackDisconnect = () => channelDisconnect('slack')
 
+export async function listSlackChannels(): Promise<{ id: string; name: string }[]> {
+  try {
+    return await apiRequest('/channels/slack/channels')
+  } catch {
+    return []
+  }
+}
+
 export const telegramGenerateCode = () => channelConnect('telegram') as Promise<TelegramConnectResult>
 export const telegramStatus       = () => channelStatus('telegram') as Promise<{ connected: boolean; chat_id?: string }>
 export const telegramDisconnect   = () => channelDisconnect('telegram')

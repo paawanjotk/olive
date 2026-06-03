@@ -22,7 +22,7 @@ from app.schemas.channels import (
     ChannelBindingResponse,
     SetWebhookRequest,
 )
-from app.services import telegram_service
+from app.services import slack_service, telegram_service
 from app.services.channel_connector import get_connector, supported_platforms
 
 router = APIRouter()
@@ -156,6 +156,21 @@ async def delete_binding(
         raise HTTPException(status_code=404, detail="Binding not found")
     await db.delete(binding)
     await db.commit()
+
+
+# ── Slack channel listing ─────────────────────────────────────────────────────
+
+@router.get("/slack/channels")
+async def list_slack_channels(
+    current_user: dict = Depends(get_current_user),
+):
+    """Return all Slack channels the bot can see, sorted by name.
+
+    Requires channels:read + groups:read scopes on the bot token.
+    Returns an empty list (not an error) when Slack is not configured or the
+    bot lacks the required scopes so the UI can fall back gracefully.
+    """
+    return await slack_service.list_channels()
 
 
 # ── Telegram webhook registration ─────────────────────────────────────────────
