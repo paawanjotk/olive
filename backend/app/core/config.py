@@ -46,9 +46,9 @@ class Settings(BaseSettings):
     SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
 
     # LLM provider credentials
-    ANTHROPIC_API_KEY: str = ""
-    GEMINI_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
+    ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
 
     # Anthropic model config
