@@ -79,7 +79,7 @@ services:
     restart: unless-stopped
     command: beat
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5433/ollive_chat
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/ollive_chat
       REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
