@@ -18,15 +18,15 @@ services:
     restart: unless-stopped
     command: postgres -p 5433
     environment:
-      POSTGRES_DB: ollive_chat
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-ollive_chat}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
       - "5433:5433"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ollive_chat -p 5433"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-ollive_chat} -p 5433"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -38,20 +38,11 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5433/ollive_chat
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5433/${POSTGRES_DB:-ollive_chat}
       REDIS_URL: redis://redis:6379/0
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      SUPABASE_URL: ${SUPABASE_URL}
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
-      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
       RELOAD: "false"
     volumes:
       - ./app:/app/app
@@ -68,16 +59,11 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: worker
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5433/ollive_chat
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5433/${POSTGRES_DB:-ollive_chat}
       REDIS_URL: redis://redis:6379/0
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      TAVILY_API_KEY: ${TAVILY_API_KEY}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
-      SLACK_APP_TOKEN: ${SLACK_APP_TOKEN:-}
     volumes:
       - ./app:/app/app
     depends_on:
@@ -92,8 +78,10 @@ services:
       dockerfile: backend/Dockerfile
     restart: unless-stopped
     command: beat
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5433/ollive_chat
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5433/${POSTGRES_DB:-ollive_chat}
       REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
