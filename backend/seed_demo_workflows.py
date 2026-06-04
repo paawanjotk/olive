@@ -28,7 +28,7 @@ from app.db.models.workflows import Workflow
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql+asyncpg://postgres:postgres@localhost:5433/ollive_chat",
+    "postgresql+asyncpg://postgres:postgres@db:5433/ollive_chat",
 )
 TARGET_EMAIL = "ayaan.khan2812@gmail.com"
 TEMPLATE_KEY = "notion_report_generator"
