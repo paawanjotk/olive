@@ -41,7 +41,6 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5433/${POSTGRES_DB:-ollive_chat}
       REDIS_URL: redis://redis:6379/0
       RELOAD: "false"
     volumes:
@@ -62,7 +61,6 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5433/${POSTGRES_DB:-ollive_chat}
       REDIS_URL: redis://redis:6379/0
     volumes:
       - ./app:/app/app
@@ -81,7 +79,6 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5433/${POSTGRES_DB:-ollive_chat}
       REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
