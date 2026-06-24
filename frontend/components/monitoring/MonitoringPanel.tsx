@@ -30,6 +30,15 @@ function fmtTime(ts: string | null): string {
   })
 }
 
+function relTime(ts: string | null): string {
+  if (!ts) return '—'
+  const diffMs = Date.now() - new Date(ts).getTime()
+  if (diffMs < 60_000) return `${Math.floor(diffMs / 1000)}s ago`
+  if (diffMs < 3_600_000) return `${Math.floor(diffMs / 60_000)}m ago`
+  if (diffMs < 86_400_000) return `${Math.floor(diffMs / 3_600_000)}h ago`
+  return fmtTime(ts)
+}
+
 // ── Status indicator ──────────────────────────────────────────────────────────
 
 const STATUS: Record<string, { color: string; dot: string; icon: React.ElementType; label: string }> = {
@@ -80,7 +89,7 @@ function StatCard({ label, value, color, icon: Icon }: {
   label: string; value: string | number; color: string; icon: React.ElementType
 }) {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111] p-4">
+    <div className="rounded-xl border border-white/[0.06] bg-[#141414] p-4">
       <div className="flex items-center gap-1.5 mb-2">
         <Icon size={11} className={color} />
         <span className="text-[10px] text-white/35 uppercase tracking-wide">{label}</span>
@@ -100,7 +109,7 @@ function ExRow({ ex, onClick }: { ex: ExecutionWithWorkflow; onClick: () => void
   return (
     <button
       onClick={onClick}
-      className="w-full group text-left rounded-2xl border border-white/[0.06] bg-[#0f0f0f] hover:bg-[#141414] hover:border-white/[0.10] transition-all duration-150 overflow-hidden"
+      className="w-full group text-left rounded-xl border border-white/[0.06] bg-[#141414] hover:bg-[#181818] hover:border-white/[0.10] transition-all duration-150 overflow-hidden"
     >
       <div className="flex items-start gap-4 px-5 py-4">
         {/* Status dot */}
@@ -119,8 +128,8 @@ function ExRow({ ex, onClick }: { ex: ExecutionWithWorkflow; onClick: () => void
             <p className="text-white/35 text-xs truncate mt-0.5 max-w-md">{inputText}</p>
           )}
           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-            <span className="text-white/20 text-[10px] font-mono">{ex.id.slice(0, 16)}…</span>
-            <span className="text-white/25 text-[10px]">{fmtTime(ex.created_at)}</span>
+            <span className="text-xs text-white/30 font-mono">{ex.id.slice(0, 8)}</span>
+            <span className="text-white/25 text-[10px]">{relTime(ex.created_at)}</span>
             {(ex.started_at) && (
               <span className="text-white/20 text-[10px]">
                 {isActive ? '⏱ ' : ''}{fmtMs(ex.started_at, ex.completed_at)}
@@ -210,7 +219,8 @@ export default function MonitoringPanel() {
             </button>
             <button
               onClick={load}
-              className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.05] transition-colors"
+              disabled={loading}
+              className="p-1.5 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.05] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <RefreshCw size={13} />
             </button>

@@ -24,6 +24,10 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
   const [refreshKey, setRefreshKey] = useState(0)
   const stream = useExecutionStream(executionId, refreshKey)
   const base = useMemo(() => graphToFlow(workflow.graph_json), [workflow.id])
+  const nodeLabelMap = useMemo(
+    () => Object.fromEntries(base.nodes.map((n) => [n.id, (n.data as { label?: string }).label ?? n.id])),
+    [base.nodes],
+  )
   const [controlling, setControlling] = useState(false)
 
   const handleControl = async (action: 'pause' | 'resume' | 'terminate') => {
@@ -62,7 +66,13 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
         <button onClick={onBack} className="p-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06]">
           <ArrowLeft size={16} />
         </button>
-        <span className="text-white text-sm font-medium">{workflow.name}</span>
+        <span className="text-white text-sm font-medium">
+          {workflow.name}
+          <span className="text-white/30 font-mono text-xs ml-2">· {executionId.slice(0, 8)}</span>
+          {stream.logs[0]?.ts && (
+            <span className="text-white/25 text-xs ml-2 font-normal non-mono">{stream.logs[0].ts.split(' ')[0]}</span>
+          )}
+        </span>
         <StatusPill status={stream.status} />
         <div className="flex-1" />
         <div className="flex items-center gap-2">
@@ -140,7 +150,7 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
           {/* Streaming output of the active/last node */}
           <div className="flex-1 overflow-y-auto p-4 min-h-0 border-b border-white/[0.06]">
             <p className="text-[10px] uppercase tracking-wide text-white/40 mb-2">
-              {runningNode ? `${runningNode} — live output` : 'Node output'}
+              {runningNode ? `${nodeLabelMap[runningNode] ?? runningNode} — live output` : 'Node output'}
             </p>
             {Object.entries(stream.nodeOutputs).length === 0 ? (
               <p className="text-white/20 text-sm">Waiting for output…</p>
@@ -148,7 +158,7 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
               <div className="space-y-3">
                 {Object.entries(stream.nodeOutputs).map(([nid, text]) => (
                   <div key={nid}>
-                    <p className="text-[11px] text-white/40 mb-0.5">{nid}</p>
+                    <p className="text-[11px] text-white/40 mb-0.5 truncate max-w-full">{nodeLabelMap[nid] ?? nid}</p>
                     <p className="text-[13px] text-white/80 whitespace-pre-wrap leading-relaxed">{text}</p>
                   </div>
                 ))}
