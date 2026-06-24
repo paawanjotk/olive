@@ -1,14 +1,15 @@
 import { cn } from '@/lib/utils'
 
 /**
- * Ollive brand mark — a loose, single-line olive sprig with outlined leaves.
- * Pure stroke art using `currentColor`, so it inherits the text color and can be
- * tinted anywhere: <OliveLogo size={20} className="text-emerald-400" />
+ * Ollive brand mark — a single-line olive sprig: five outlined oval leaves that
+ * overlap at the center (creating the woven, hand-drawn crossing) with a trailing
+ * stem. Pure stroke art using `currentColor`, so it can be tinted anywhere:
+ *   <OliveLogo size={20} className="text-emerald-400" />
  */
 export function OliveLogo({
   size = 24,
   className,
-  strokeWidth = 2.4,
+  strokeWidth = 2.3,
 }: {
   size?: number
   className?: string
@@ -18,7 +19,7 @@ export function OliveLogo({
     <svg
       width={size}
       height={size}
-      viewBox="0 0 48 48"
+      viewBox="0 0 64 64"
       fill="none"
       stroke="currentColor"
       strokeWidth={strokeWidth}
@@ -27,20 +28,15 @@ export function OliveLogo({
       className={cn('shrink-0', className)}
       aria-hidden="true"
     >
-      <defs>
-        {/* one teardrop leaf: pointed base at (0,0), rounded tip at (0,-16) */}
-        <path id="ollive-leaf" d="M0 0 C5 -4 6 -12 0 -16 C-6 -12 -5 -4 0 0 Z" />
-      </defs>
+      {/* trailing stem with a soft curl */}
+      <path d="M32 30 C 26 38 20 43 12.5 48" />
 
-      {/* trailing stem */}
-      <path d="M27 26 C21 32 15 36 8 41" />
-
-      {/* leaves radiating from the node, alternating sizes for an organic feel */}
-      <use href="#ollive-leaf" transform="translate(27 26) rotate(-54) scale(0.9)" />
-      <use href="#ollive-leaf" transform="translate(27 26) rotate(-16) scale(1)" />
-      <use href="#ollive-leaf" transform="translate(27 26) rotate(24) scale(0.64)" />
-      <use href="#ollive-leaf" transform="translate(27 26) rotate(66) scale(0.96)" />
-      <use href="#ollive-leaf" transform="translate(27 26) rotate(112) scale(0.86)" />
+      {/* five oval leaves fanning out from a small central crossing */}
+      <ellipse cx="27.6" cy="16.8" rx="12"   ry="7"   transform="rotate(70 27.6 16.8)" />
+      <ellipse cx="39.5" cy="18.4" rx="10"   ry="6.2" transform="rotate(125 39.5 18.4)" />
+      <ellipse cx="44.9" cy="27.9" rx="12"   ry="7"   transform="rotate(175 44.9 27.9)" />
+      <ellipse cx="37.5" cy="40.8" rx="11.5" ry="6.8" transform="rotate(65 37.5 40.8)" />
+      <ellipse cx="20.7" cy="35.5" rx="12.5" ry="7"   transform="rotate(150 20.7 35.5)" />
     </svg>
   )
 }
