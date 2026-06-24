@@ -184,7 +184,7 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-emerald-500/40 bg-emerald-500/[0.12] text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500/60 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
         </button>
@@ -197,7 +197,7 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
           }}
           disabled={!canRun}
           title={canRun ? 'Run workflow' : 'Resolve the highlighted problems first'}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-emerald-500/40 bg-emerald-500/[0.12] text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500/60 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Play size={12} /> Run
         </button>
