@@ -195,16 +195,51 @@ export default function ChatSidebar({
 
   const displayName = user?.name || user?.email?.split('@')[0] || 'User'
 
+  const [collapsed, setCollapsed] = useState(false)
+
+  // Restore the persisted collapse preference on mount.
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('ollive-sidebar-collapsed') === '1') {
+      setCollapsed(true)
+    }
+  }, [])
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('ollive-sidebar-collapsed', next ? '1' : '0')
+      }
+      return next
+    })
+  }
+
   return (
-    <aside className="w-64 flex-shrink-0 bg-[#111111] flex flex-col h-full">
-      {/* Top bar: logo + collapse icon */}
-      <div className="flex items-center justify-between px-3 pt-2.5 pb-1.5">
+    <aside
+      className={cn(
+        'flex-shrink-0 bg-[#111111] flex flex-col h-full transition-[width] duration-200 ease-in-out',
+        collapsed ? 'w-[68px]' : 'w-64'
+      )}
+    >
+      {/* Top bar: logo + collapse toggle */}
+      <div
+        className={cn(
+          'flex items-center px-3 pt-2.5 pb-1.5',
+          collapsed ? 'flex-col gap-1.5' : 'justify-between'
+        )}
+      >
         <div className="flex items-center gap-2 px-1.5 py-1">
           <div className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">O</span>
           </div>
         </div>
-        <button className="p-2 rounded-lg hover:bg-white/[0.06] text-white/25 hover:text-white/60 transition-colors">
+        <button
+          onClick={toggleCollapsed}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          className="p-2 rounded-lg hover:bg-white/[0.06] text-white/25 hover:text-white/60 transition-colors"
+        >
           <PanelLeft size={15} />
         </button>
       </div>
@@ -213,10 +248,14 @@ export default function ChatSidebar({
       <div className="px-2 pb-1">
         <button
           onClick={startNewChat}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[#c0c0c0] hover:bg-white/[0.06] hover:text-white transition-colors text-sm"
+          title={collapsed ? 'New chat' : undefined}
+          className={cn(
+            'w-full flex items-center rounded-lg text-[#c0c0c0] hover:bg-white/[0.06] hover:text-white transition-colors text-sm',
+            collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5'
+          )}
         >
           <SquarePen size={15} className="flex-shrink-0 text-white/60" />
-          <span>New chat</span>
+          {!collapsed && <span>New chat</span>}
         </button>
       </div>
 
@@ -228,74 +267,100 @@ export default function ChatSidebar({
             <button
               key={label}
               onClick={() => view && onViewChange(isActive ? 'chat' : view)}
+              title={collapsed ? label : undefined}
               className={cn(
-                'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-sm',
+                'w-full flex items-center rounded-lg transition-colors text-sm',
+                collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5',
                 isActive
                   ? 'bg-white/[0.08] text-white'
                   : 'text-[#c0c0c0] hover:bg-white/[0.06] hover:text-white'
               )}
             >
               <Icon size={15} className={cn('flex-shrink-0', isActive ? 'text-white/80' : 'text-white/60')} />
-              <span>{label}</span>
+              {!collapsed && <span>{label}</span>}
             </button>
           )
         })}
       </nav>
 
-      {/* Recents section */}
-      <div className="flex-1 overflow-y-auto min-h-0 mt-3">
-        <div className="px-4 mb-1.5">
-          <span className="text-[#686868] text-xs font-medium">Recents</span>
-        </div>
+      {/* Recents section — hidden when collapsed */}
+      {collapsed ? (
+        <div className="flex-1" />
+      ) : (
+        <div className="flex-1 overflow-y-auto min-h-0 mt-3">
+          <div className="px-4 mb-1.5">
+            <span className="text-[#686868] text-xs font-medium">Recents</span>
+          </div>
 
-        {isLoadingSessions ? (
-          <SessionSkeleton />
-        ) : sessions.length === 0 ? (
-          <div className="px-4 py-5">
-            <p className="text-[#505050] text-sm">No conversations yet</p>
-          </div>
-        ) : (
-          <div className="px-2 space-y-0.5">
-            {sessions.map((session) => (
-              <SessionItem
-                key={session.id}
-                session={session}
-                isActive={activeSessionId === session.id}
-                onSelect={() => selectSession(session.id)}
-                onDelete={() => deleteSession(session.id)}
-                onRename={(title) => renameSession(session.id, title)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
+          {isLoadingSessions ? (
+            <SessionSkeleton />
+          ) : sessions.length === 0 ? (
+            <div className="px-4 py-5">
+              <p className="text-[#505050] text-sm">No conversations yet</p>
+            </div>
+          ) : (
+            <div className="px-2 space-y-0.5">
+              {sessions.map((session) => (
+                <SessionItem
+                  key={session.id}
+                  session={session}
+                  isActive={activeSessionId === session.id}
+                  onSelect={() => selectSession(session.id)}
+                  onDelete={() => deleteSession(session.id)}
+                  onRename={(title) => renameSession(session.id, title)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* User footer */}
       <div className="px-2 py-2.5 border-t border-white/[0.06]">
-        <div className="flex items-center gap-1">
-          <div className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg min-w-0">
-            <div className="w-8 h-8 rounded-full bg-[#10a37f] flex items-center justify-center text-white text-xs font-bold flex-shrink-0 select-none">
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1.5">
+            <div
+              title={displayName}
+              className="w-8 h-8 rounded-full bg-[#10a37f] flex items-center justify-center text-white text-xs font-bold flex-shrink-0 select-none"
+            >
               {initials}
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-white text-sm font-medium truncate leading-tight">
-                {displayName}
-              </p>
-              {user?.email && (
-                <p className="text-[#686868] text-xs truncate leading-tight mt-0.5">
-                  {user.email}
-                </p>
-              )}
-            </div>
+            <button
+              onClick={onSignOut}
+              title="Sign out"
+              aria-label="Sign out"
+              className="p-2 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+            >
+              <LogOut size={14} />
+            </button>
           </div>
-          <button
-            onClick={onSignOut}
-            title="Sign out"
-            className="p-2 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-colors flex-shrink-0"
-          >
-            <LogOut size={14} />
-          </button>
-        </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <div className="flex-1 flex items-center gap-3 px-3 py-2 rounded-lg min-w-0">
+              <div className="w-8 h-8 rounded-full bg-[#10a37f] flex items-center justify-center text-white text-xs font-bold flex-shrink-0 select-none">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate leading-tight">
+                  {displayName}
+                </p>
+                {user?.email && (
+                  <p className="text-[#686868] text-xs truncate leading-tight mt-0.5">
+                    {user.email}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={onSignOut}
+              title="Sign out"
+              aria-label="Sign out"
+              className="p-2 rounded-lg text-white/25 hover:text-white/60 hover:bg-white/[0.06] transition-colors flex-shrink-0"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   )
