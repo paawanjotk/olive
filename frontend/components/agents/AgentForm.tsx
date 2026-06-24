@@ -159,7 +159,9 @@ function ChannelToggle({
 export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProps) {
   const [form, setForm] = useState<FormState>(initial ? fromAgent(initial) : DEFAULT)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<{ name?: string; system_prompt?: string }>({})
+  const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
   const [section, setSection] = useState<Section>('identity')
   const [mcpConnections, setMcpConnections] = useState<MCPConnection[]>([])
 
@@ -175,13 +177,19 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
     setForm((prev) => ({ ...prev, model, provider: m?.provider ?? prev.provider }))
   }
 
+  function validate(): boolean {
+    const e: { name?: string; system_prompt?: string } = {}
+    if (!form.name.trim()) e.name = 'Name is required'
+    if (!form.system_prompt.trim()) e.system_prompt = 'System prompt is required'
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim() || !form.system_prompt.trim()) {
-      setError('Name and system prompt are required.')
-      return
-    }
-    setError(null)
+    if (!validate()) return
+    setSaveError(null)
+    setSaved(false)
     setLoading(true)
     try {
       const guardrails: Record<string, unknown> = { require_approval: form.require_approval }
@@ -209,8 +217,10 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
           },
         },
       })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save agent')
+      setSaveError(err instanceof Error ? err.message : 'Failed to save agent')
     } finally {
       setLoading(false)
     }
@@ -256,6 +266,8 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
       <div className="flex-1 overflow-y-auto min-h-0 space-y-4 pr-1">
         {section === 'identity' && (
           <>
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40 mt-5 mb-2">Identity</p>
+
             <div>
               <Label>Avatar</Label>
               <div className="flex flex-wrap gap-2">
@@ -275,7 +287,21 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
               </div>
             </div>
 
-            <div><Label>Name *</Label><Input value={form.name} onChange={set('name')} placeholder="Research Agent" /></div>
+            <div>
+              <Label>Name *</Label>
+              <input
+                type="text"
+                value={form.name}
+                onChange={(e) => set('name')(e.target.value)}
+                placeholder="Research Agent"
+                className={cn(
+                  'w-full bg-white/[0.04] border rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 outline-none focus:border-white/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                  errors.name ? 'border-red-500/60' : 'border-white/[0.08]'
+                )}
+              />
+              {errors.name && <p className="mt-1 text-xs text-red-400">{errors.name}</p>}
+            </div>
+
             <div><Label>Description</Label><Input value={form.description} onChange={set('description')} placeholder="Short description — also helps a supervisor decide when to route here" /></div>
 
             <div>
@@ -284,7 +310,7 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
                 <select
                   value={form.role}
                   onChange={(e) => set('role')(e.target.value)}
-                  className="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-white/20 capitalize pr-8"
+                  className="w-full appearance-none bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-white/20 capitalize pr-8 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {ROLES.map((r) => <option key={r} value={r} className="bg-[#1a1a1a] capitalize">{r}</option>)}
                 </select>
@@ -292,11 +318,24 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
               </div>
             </div>
 
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40 mt-5 mb-2">Behavior</p>
+
             <div>
               <Label>System Prompt *</Label>
-              <Textarea value={form.system_prompt} onChange={set('system_prompt')} rows={5}
-                placeholder="You are a research specialist. Your goal is to find accurate, up-to-date information…" />
+              <textarea
+                value={form.system_prompt}
+                onChange={(e) => set('system_prompt')(e.target.value)}
+                placeholder="You are a research specialist. Your goal is to find accurate, up-to-date information…"
+                rows={5}
+                className={cn(
+                  'w-full bg-white/[0.04] border rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 outline-none focus:border-white/20 transition-colors resize-none leading-relaxed disabled:opacity-40 disabled:cursor-not-allowed',
+                  errors.system_prompt ? 'border-red-500/60' : 'border-white/[0.08]'
+                )}
+              />
+              {errors.system_prompt && <p className="mt-1 text-xs text-red-400">{errors.system_prompt}</p>}
             </div>
+
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40 mt-5 mb-2">Advanced</p>
 
             <div>
               <Label>SOUL.md — persona</Label>
@@ -308,6 +347,8 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
 
         {section === 'brain' && (
           <>
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40 mt-5 mb-2">Behavior</p>
+
             <div>
               <Label>Model</Label>
               <div className="relative">
@@ -345,6 +386,8 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
                 <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
               </div>
             </div>
+
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40 mt-5 mb-2">Tools</p>
 
             <div className="pt-1">
               <Label>Tools</Label>
@@ -497,6 +540,8 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
 
         {section === 'guardrails' && (
           <>
+            <p className="text-xs font-medium uppercase tracking-wide text-white/40 mt-5 mb-2">Advanced</p>
+
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <Label>Max iterations</Label>
@@ -532,19 +577,20 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
         )}
       </div>
 
-      {error && <p className="mt-3 text-xs text-red-400 flex-shrink-0">{error}</p>}
       <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/[0.06] flex-shrink-0">
         {onCancel && (
           <button type="button" onClick={onCancel}
-            className="flex-1 py-2 rounded-lg text-sm text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors">
+            className="flex-1 py-2 rounded-lg text-sm text-white/40 hover:text-white/70 hover:bg-white/[0.04] transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             Cancel
           </button>
         )}
         <button type="submit" disabled={loading}
-          className="flex-1 py-2 rounded-lg text-sm bg-white text-black font-medium hover:bg-white/90 disabled:opacity-50 transition-all flex items-center justify-center gap-2">
+          className="flex-1 py-2 rounded-lg text-sm bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2">
           {loading && <Loader2 size={13} className="animate-spin" />}
           {initial ? 'Save Changes' : 'Create Agent'}
         </button>
+        {saved && <span className="text-xs text-emerald-400 flex-shrink-0">Saved ✓</span>}
+        {saveError && <span className="text-xs text-red-400 flex-shrink-0">Save failed</span>}
       </div>
     </form>
   )
