@@ -192,7 +192,7 @@ export default function MonitoringPanel() {
   const paused    = executions.filter((e) => e.status === 'paused')
 
   return (
-    <div className="flex flex-col h-full bg-[#0a0a0a] overflow-y-auto">
+    <div className="flex-1 min-w-0 flex flex-col h-full bg-[#0a0a0a] overflow-y-auto">
       <div className="max-w-3xl mx-auto px-6 py-8 w-full">
 
         {/* Header */}

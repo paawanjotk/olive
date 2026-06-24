@@ -70,7 +70,7 @@ export default function AgentsPanel() {
   }
 
   return (
-    <div className="flex h-full bg-[#0d0d0d]">
+    <div className="flex-1 min-w-0 flex h-full bg-[#0d0d0d]">
       {/* Left: Agent list */}
       <div className="w-72 flex-shrink-0 border-r border-white/[0.06] flex flex-col h-full bg-[#111111]">
         {/* Header */}
