@@ -70,7 +70,7 @@ function MonitorInner({ workflow, executionId, onBack }: Props) {
           {workflow.name}
           <span className="text-white/30 font-mono text-xs ml-2">· {executionId.slice(0, 8)}</span>
           {stream.logs[0]?.ts && (
-            <span className="text-white/25 text-xs ml-2 font-normal non-mono">{stream.logs[0].ts.split(' ')[0]}</span>
+            <span className="text-white/25 text-xs ml-2 font-normal">{stream.logs[0].ts.slice(0, 16)}</span>
           )}
         </span>
         <StatusPill status={stream.status} />
