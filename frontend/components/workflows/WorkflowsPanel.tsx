@@ -13,7 +13,7 @@ import {
 import type {
   Workflow, WorkflowTemplate, Agent, GraphJson, ChannelBinding,
 } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 import WorkflowBuilder from './WorkflowBuilder'
 import ExecutionMonitor from './ExecutionMonitor'
 
@@ -162,14 +162,14 @@ export default function WorkflowsPanel() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 {templates.map((t) => (
-                  <div key={t.key} className="rounded-xl border border-white/[0.06] bg-[#141414] p-4 hover:border-white/[0.12] transition-colors">
+                  <div key={t.key} className="flex flex-col h-full rounded-xl border border-white/[0.06] bg-[#141414] p-4 hover:border-white/[0.12] transition-colors">
                     <p className="text-white text-sm font-medium">{t.name}</p>
-                    <p className="text-white/35 text-xs mt-1 leading-relaxed h-8 line-clamp-2">{t.description}</p>
-                    <div className="flex items-center justify-between mt-3">
-                      <span className="text-[11px] text-white/25">{t.agent_count} agents</span>
+                    <p className="text-sm text-white/50 line-clamp-2 min-h-[2.5rem] mt-1 leading-relaxed">{t.description}</p>
+                    <div className="mt-auto flex items-center justify-between pt-3">
+                      <span className="text-[11px] text-white/25">{plural(t.agent_count, 'agent')}</span>
                       <button
                         onClick={() => handleClone(t.key)}
-                        className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white transition-colors"
+                        className="text-xs px-2.5 py-1 rounded-lg bg-white/[0.06] text-white/70 hover:bg-emerald-500/15 hover:text-emerald-200 transition-colors"
                       >
                         Use template
                       </button>
@@ -223,7 +223,7 @@ export default function WorkflowsPanel() {
             />
 
             {/* Slack — configured per-workflow in the builder's Channels panel */}
-            <div className="mt-6 rounded-xl border border-white/[0.04] bg-[#141414] p-4">
+            <div className="mt-6 rounded-xl border border-white/[0.06] bg-[#141414] p-4 hover:border-white/[0.12] transition-colors">
               <div className="flex items-center gap-1.5 mb-2">
                 <span className="text-white/40 text-sm font-bold">#</span>
                 <h2 className="text-xs font-medium text-white/50 uppercase tracking-wide">Slack</h2>
@@ -295,7 +295,7 @@ function TelegramSection({
           <button
             onClick={bind}
             disabled={busy || !chatId.trim() || !workflowId}
-            className="px-3 py-2 rounded-lg text-sm bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white disabled:opacity-40"
+            className="px-3 py-2 rounded-lg text-sm bg-emerald-500 text-white hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {busy ? <Loader2 size={13} className="animate-spin" /> : 'Bind'}
           </button>
@@ -382,7 +382,7 @@ function SlackSection({
           <button
             onClick={bind}
             disabled={busy || !channelId.trim() || !workflowId}
-            className="px-3 py-2 rounded-lg text-sm bg-white/[0.06] text-white/70 hover:bg-white/[0.12] hover:text-white disabled:opacity-40"
+            className="px-3 py-2 rounded-lg text-sm bg-emerald-500 text-white hover:bg-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {busy ? <Loader2 size={13} className="animate-spin" /> : 'Bind'}
           </button>
