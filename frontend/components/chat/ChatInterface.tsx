@@ -36,7 +36,8 @@ export default function ChatInterface() {
   if (loading || !session) return null
 
   return (
-    <div className="flex h-screen bg-[#0d0d0d] overflow-hidden">
+    <div className="relative flex h-screen bg-[#0d0d0d] overflow-hidden">
+      <div className="app-glow" />
       <ChatSidebar
         user={chat.user}
         sessions={chat.sessions}

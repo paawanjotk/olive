@@ -10,7 +10,7 @@ import '@xyflow/react/dist/style.css'
 import {
   ArrowLeft, Bot, GitBranch, ShieldCheck, Save, Play, Trash2, Loader2, Radio,
   History, CheckCircle2, XCircle, Clock, CalendarClock, Plus, RefreshCw,
-  Github, BookOpen,
+  Github, BookOpen, MousePointerClick,
 } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { styleEdges, graphToFlow, flowToGraph } from '@/lib/workflowGraph'
@@ -31,6 +31,20 @@ interface Props {
 let _seq = 0
 const newId = (t: string) => `${t}_${Date.now().toString(36)}_${_seq++}`
 
+// Returns human-readable problems that should block a run.
+function validateGraph(nodes: { id: string; type?: string; data: Record<string, unknown> }[]): string[] {
+  const problems: string[] = []
+  const executable = nodes.filter((n) => n.type === 'agent' || n.type === 'supervisor')
+  if (executable.length === 0) problems.push('Add at least one agent or supervisor node.')
+  for (const n of executable) {
+    if (!n.data?.agentId) {
+      const label = (n.data?.label as string) || n.id
+      problems.push(`"${label}" has no agent assigned — pick one in the node's config panel.`)
+    }
+  }
+  return problems
+}
+
 function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution, channelOwners }: Props) {
   const initial = useMemo(() => graphToFlow(workflow.graph_json), [workflow.id])
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
@@ -39,12 +53,19 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState(false)
   const [runOpen, setRunOpen] = useState(false)
   const [runInput, setRunInput] = useState('')
   const [inspectorTab, setInspectorTab] = useState<'node' | 'channels' | 'runs'>('node')
   const [channelConfig, setChannelConfig] = useState<any>(workflow.graph_json.channel_config ?? {})
   const [slackChannels, setSlackChannels] = useState<{ id: string; name: string }[]>([])
   const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
+  const [runProblems, setRunProblems] = useState<string[]>([])
+
+  const canRun = validateGraph(nodes).length === 0
+
+  // Clear run-validation problems whenever the graph changes.
+  useEffect(() => { setRunProblems([]) }, [nodes])
 
   // Warn if this workflow's Slack channel is already claimed by a different one.
   const slackChannelId = channelConfig.slack?.channel_id
@@ -100,11 +121,16 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(false)
     try {
       const graph = flowToGraph(nodes, edges)
       graph.channel_config = channelConfig
       await onSave(graph, name.trim() || 'Untitled workflow')
       setSavedAt(new Date().toLocaleTimeString())
+    } catch (err) {
+      console.error(err)
+      setSaveError(true)
+      setSavedAt(null)
     } finally {
       setSaving(false)
     }
@@ -153,21 +179,40 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
           </button>
         </div>
         <div className="flex-1" />
-        {savedAt && <span className="text-[11px] text-white/25">saved {savedAt}</span>}
+        {saveError && <span className="text-[11px] text-red-400">Save failed — retry</span>}
+        {!saveError && savedAt && <span className="text-[11px] text-white/25">Saved ✓ {savedAt}</span>}
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white/[0.06] text-white/70 hover:bg-white/[0.10] hover:text-white disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-emerald-500/40 bg-emerald-500/[0.12] text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500/60 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
         </button>
         <button
-          onClick={() => setRunOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white text-black font-medium hover:bg-white/90"
+          onClick={() => {
+            const problems = validateGraph(nodes)
+            if (problems.length) { setRunProblems(problems); return }
+            setRunProblems([])
+            setRunOpen(true)
+          }}
+          disabled={!canRun}
+          title={canRun ? 'Run workflow' : 'Resolve the highlighted problems first'}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-emerald-500/40 bg-emerald-500/[0.12] text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-500/60 font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Play size={12} /> Run
         </button>
       </div>
+
+      {runProblems.length > 0 && (
+        <div className="flex-shrink-0 mx-4 mt-2 mb-1 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5">
+          <p className="text-xs font-medium text-amber-300 mb-1">Fix before running:</p>
+          <ul className="space-y-0.5">
+            {runProblems.map((p, i) => (
+              <li key={i} className="text-xs text-amber-300/80">• {p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex-1 flex min-h-0">
         {/* Canvas */}
@@ -189,12 +234,18 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
             <Controls className="!bg-[#161616] !border-white/10 [&_button]:!bg-[#161616] [&_button]:!border-white/10 [&_button]:!fill-white/60" />
             <MiniMap
               pannable zoomable
-              className="!bg-[#111]"
+              bgColor="#0d0d0d"
+              className="!bg-[#0d0d0d] !rounded-xl !border !border-white/[0.07] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
               nodeColor={(n) => ({
                 trigger: '#38bdf8', agent: '#a78bfa', supervisor: '#fbbf24',
                 checkpoint: '#34d399', end: '#666',
               } as Record<string, string>)[n.type ?? 'agent'] ?? '#666'}
-              maskColor="rgba(0,0,0,0.6)"
+              nodeStrokeColor="rgba(255,255,255,0.14)"
+              nodeStrokeWidth={2}
+              nodeBorderRadius={3}
+              maskColor="rgba(8,8,8,0.72)"
+              maskStrokeColor="rgba(16,185,129,0.32)"
+              maskStrokeWidth={2.5}
             />
             <LegendPanel />
           </ReactFlow>
@@ -207,11 +258,10 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
           ) : inspectorTab === 'channels' ? (
             <ChannelsPanel config={channelConfig} onChange={setChannelConfig} conflict={channelConflict} />
           ) : !selected ? (
-            <div className="text-center pt-10">
-              <p className="text-white/30 text-sm">Select a node to configure it</p>
-              <p className="text-white/15 text-xs mt-2 leading-relaxed">
-                Drag from a node&apos;s right handle to another node&apos;s left handle to connect them.
-              </p>
+            <div className="flex flex-col items-center justify-center h-full px-6 text-center text-white/40">
+              <MousePointerClick size={20} className="mb-2 text-white/25" />
+              <p className="text-sm">Select a node to configure it</p>
+              <p className="mt-1 text-xs text-white/30">Drag a node&apos;s right handle to another node&apos;s left to connect them.</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -651,12 +701,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function LegendPanel() {
   return (
-    <div className="absolute bottom-3 left-3 z-10 bg-[#161616]/90 border border-white/[0.06] rounded-lg px-3 py-2 text-[10px] text-white/50 space-y-1">
+    <div className="absolute top-3 left-3 z-10 bg-[#161616]/90 border border-white/[0.06] rounded-lg px-3 py-2 text-[10px] text-white/50 space-y-1">
       <div className="flex items-center gap-2">
         <span className="w-5 border-t border-white/40" /> deterministic
       </div>
       <div className="flex items-center gap-2">
-        <span className="w-5 border-t border-dashed border-amber-400" /> agent-decided
+        <span className="w-5 border-t border-dashed border-emerald-400" /> agent-decided
       </div>
     </div>
   )

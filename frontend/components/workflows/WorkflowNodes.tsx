@@ -38,7 +38,7 @@ function BaseNode({
   return (
     <div
       className={cn(
-        'relative rounded-xl bg-[#161616] border border-white/[0.06] ring-1 px-3 py-2.5 w-[180px] transition-all',
+        'relative rounded-xl bg-[#161616] border border-white/[0.06] ring-1 px-3 py-2.5 w-[180px] min-w-[180px] transition-all',
         STATUS_RING[status]
       )}
     >
@@ -49,7 +49,7 @@ function BaseNode({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <p className="text-[13px] font-medium text-white truncate">{label}</p>
+            <p className="text-sm font-medium text-white leading-tight line-clamp-2" title={label}>{label}</p>
             <StatusBadge status={status} />
           </div>
           <p className="text-[10px] uppercase tracking-wide text-white/30">{kind}</p>

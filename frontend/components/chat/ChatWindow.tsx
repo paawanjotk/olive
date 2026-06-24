@@ -73,7 +73,7 @@ function WelcomeScreen({
   isConnected: boolean
 }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 pb-14 animate-[fade-in_0.15s_ease-out]">
+    <div className="min-h-full flex flex-col items-center justify-center px-6 py-10 animate-[fade-in_0.15s_ease-out]">
       <h2 className="text-[1.8rem] font-semibold text-white mb-7 tracking-tight">
         What are you working on?
       </h2>
