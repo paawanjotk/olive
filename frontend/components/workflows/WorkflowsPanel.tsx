@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Workflow as WorkflowIcon, Plus, Loader2, AlertCircle, Play, Trash2,
-  Sparkles, Send, History,
+  Sparkles, Send, History, Pencil, Check, X,
 } from 'lucide-react'
 import {
   listWorkflows, listTemplates, cloneTemplate, createWorkflow, updateWorkflow,
@@ -183,33 +183,30 @@ export default function WorkflowsPanel() {
             <section className="mb-8">
               <h2 className="text-xs font-medium text-white/50 uppercase tracking-wide mb-3">My workflows</h2>
               {workflows.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-white/[0.08] py-10 text-center">
-                  <p className="text-white/30 text-sm">No workflows yet</p>
-                  <p className="text-white/15 text-xs mt-1">Clone a template or create one from scratch</p>
+                <div className="rounded-xl border border-white/[0.06] bg-[#141414] p-6 text-center hover:border-white/[0.12] transition-colors">
+                  <p className="text-white/40 text-sm font-medium">No workflows yet</p>
+                  <p className="text-white/25 text-xs mt-1 mb-4">Use a template above or{' '}
+                    <button
+                      onClick={handleNew}
+                      className="underline underline-offset-2 text-white/40 hover:text-white/70 transition-colors"
+                    >
+                      create a new workflow
+                    </button>
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {workflows.map((wf) => (
-                    <div key={wf.id} className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-[#141414] px-4 py-3 hover:border-white/[0.12] transition-colors">
-                      <button className="flex-1 text-left min-w-0" onClick={() => setView({ name: 'builder', workflow: wf })}>
-                        <p className="text-white text-sm font-medium truncate">{wf.name}</p>
-                        <p className="text-white/30 text-xs truncate">
-                          {(wf.graph_json.nodes ?? []).length} nodes · {(wf.graph_json.edges ?? []).length} edges
-                        </p>
-                      </button>
-                      <button
-                        onClick={() => setView({ name: 'builder', workflow: wf })}
-                        className="text-xs px-2.5 py-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06]"
-                      >
-                        Open
-                      </button>
-                      <button
-                        onClick={() => handleDelete(wf)}
-                        className="p-1.5 rounded-lg text-white/25 hover:text-red-400 hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+                    <WorkflowRow
+                      key={wf.id}
+                      wf={wf}
+                      onOpen={() => setView({ name: 'builder', workflow: wf })}
+                      onDelete={() => handleDelete(wf)}
+                      onRename={async (name) => {
+                        const updated = await updateWorkflow(wf.id, { name })
+                        setWorkflows((p) => p.map((w) => (w.id === updated.id ? updated : w)))
+                      }}
+                    />
                   ))}
                 </div>
               )}
@@ -236,6 +233,117 @@ export default function WorkflowsPanel() {
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+interface WorkflowRowProps {
+  wf: Workflow
+  onOpen: () => void
+  onDelete: () => void
+  onRename: (name: string) => Promise<void>
+}
+
+function WorkflowRow({ wf, onOpen, onDelete, onRename }: WorkflowRowProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(wf.name)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setEditTitle(wf.name)
+    setIsEditing(true)
+  }
+
+  const handleConfirm = async () => {
+    const trimmed = editTitle.trim()
+    if (trimmed && trimmed !== wf.name) await onRename(trimmed)
+    setIsEditing(false)
+  }
+
+  const handleCancel = () => {
+    setEditTitle(wf.name)
+    setIsEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') { e.preventDefault(); handleConfirm() }
+    if (e.key === 'Escape') handleCancel()
+  }
+
+  const nodeCount = (wf.graph_json.nodes ?? []).length
+  const edgeCount = (wf.graph_json.edges ?? []).length
+
+  return (
+    <div className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-[#141414] px-4 py-3 hover:border-white/[0.12] transition-colors">
+      <div className="flex-1 min-w-0">
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onKeyDown={handleKeyDown}
+            onBlur={handleCancel}
+            className="flex-1 bg-transparent text-sm text-white outline-none border-b border-emerald-500/40 min-w-0 py-0.5 w-full"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <button className="w-full text-left" onClick={onOpen}>
+            <p className="text-white text-sm font-medium truncate">{wf.name}</p>
+          </button>
+        )}
+        <p className="text-white/30 text-xs truncate mt-0.5">
+          {plural(nodeCount, 'node')} · {plural(edgeCount, 'edge')}
+        </p>
+      </div>
+
+      {isEditing ? (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleConfirm() }}
+            className="p-0.5 rounded text-white/50 hover:text-white transition-colors"
+          >
+            <Check size={12} />
+          </button>
+          <button
+            onMouseDown={(e) => { e.preventDefault(); handleCancel() }}
+            className="p-0.5 rounded text-white/30 hover:text-white/60 transition-colors"
+          >
+            <X size={12} />
+          </button>
+        </div>
+      ) : (
+        <>
+          <button
+            onClick={handleStartEdit}
+            className="p-1 rounded text-white/0 group-hover:text-white/30 hover:!text-white/70 hover:bg-white/[0.08] transition-colors opacity-0 group-hover:opacity-100"
+            title="Rename"
+          >
+            <Pencil size={11} />
+          </button>
+          <button
+            onClick={onOpen}
+            disabled={isEditing}
+            className="text-xs px-2.5 py-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] disabled:cursor-not-allowed"
+          >
+            Open
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={isEditing}
+            className="p-1.5 rounded-lg text-white/25 hover:text-red-400 hover:bg-white/[0.06] opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed"
+          >
+            <Trash2 size={13} />
+          </button>
+        </>
+      )}
     </div>
   )
 }
