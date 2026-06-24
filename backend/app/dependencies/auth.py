@@ -25,12 +25,23 @@ def _get_jwks_client() -> PyJWKClient:
 
 
 def _decode(token: str) -> dict:
+    # HS256 (Supabase legacy / shared-secret) — validate locally with the JWT
+    # secret, no network. Works when the project's JWKS endpoint is unreachable.
+    header = jwt.get_unverified_header(token)
+    if header.get("alg") == "HS256" and settings.SUPABASE_JWT_SECRET:
+        return jwt.decode(
+            token,
+            settings.SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+    # ES256/RS256 — fetch Supabase's public keys via JWKS.
     client = _get_jwks_client()
     signing_key = client.get_signing_key_from_jwt(token)
     return jwt.decode(
         token,
         signing_key.key,
-        algorithms=["ES256", "RS256", "HS256"],
+        algorithms=["ES256", "RS256"],
         audience="authenticated",
     )
 
