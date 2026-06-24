@@ -15,6 +15,7 @@ import {
   LogOut,
 } from 'lucide-react'
 import { cn, truncate } from '@/lib/utils'
+import { OliveLogo } from '@/components/Logo'
 import type { Session, User } from '@/lib/types'
 
 type AppView = 'chat' | 'agents' | 'workflows' | 'monitoring' | 'settings'
@@ -230,7 +231,7 @@ export default function ChatSidebar({
       >
         <div className="flex items-center gap-2 px-1.5 py-1">
           <div className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-bold">O</span>
+            <OliveLogo size={18} className="text-white" />
           </div>
         </div>
         <button

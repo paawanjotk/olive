@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { cn } from '@/lib/utils'
+import { OliveLogo } from '@/components/Logo'
 
 export default function LoginPage() {
   const { signInWithGoogle, session, loading } = useAuth()
@@ -45,7 +46,7 @@ export default function LoginPage() {
         {/* Brand + heading */}
         <div className="mb-7 flex flex-col items-center gap-3.5">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/[0.08] ring-1 ring-white/[0.06] shadow-[0_8px_30px_rgba(0,0,0,0.45)]">
-            <span className="text-white text-lg font-bold">O</span>
+            <OliveLogo size={28} className="text-white" />
           </div>
           <div className="text-center">
             <h1 className="text-white text-[22px] font-semibold tracking-tight leading-tight">
