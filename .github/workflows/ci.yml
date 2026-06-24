@@ -7,30 +7,37 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
+  backend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.10"
 
-      - name: Install SDK deps
-        run: pip install -e sdk/
+      - name: Syntax check (backend)
+        run: python -m compileall -q backend/app backend/seed_demo_workflows.py backend/seed_templates.py
 
-      - name: Install ingestion deps
-        working-directory: ingestion_backend
-        run: pip install fastapi uvicorn sqlalchemy asyncpg pydantic pydantic-settings "redis[hiredis]>=5.0.0" httpx pytest pytest-asyncio
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Check for syntax errors (SDK)
-        run: python -m py_compile sdk/observe_me/*.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: Check for syntax errors (ingestion backend)
-        run: python -m py_compile ingestion_backend/app/**/*.py ingestion_backend/app/*.py
+      - name: Install deps
+        run: npm install --no-audit --no-fund
 
-      - name: Docker build check (backend)
-        run: docker build -f backend/Dockerfile -t ollive-backend-test . --quiet
-
-      - name: Docker build check (ingestion)
-        run: docker build -f ingestion_backend/Dockerfile -t ollive-ingestion-test . --quiet
+      - name: Build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key
+          NEXT_PUBLIC_BACKEND_HTTP_URL: http://localhost:8000
+          NEXT_PUBLIC_BACKEND_WS_URL: ws://localhost:8000

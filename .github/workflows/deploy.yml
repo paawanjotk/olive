@@ -30,7 +30,6 @@ jobs:
         with:
           context: .
           file: backend/Dockerfile
-          build-args: SDK_PATH=sdk
           platforms: linux/amd64
           push: true
           tags: ${{ env.BACKEND_IMAGE }}:latest
