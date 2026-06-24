@@ -28,17 +28,17 @@ export function OliveLogo({
       aria-hidden="true"
     >
       <defs>
-        {/* one leaf: pointed base at the center (0,0), rounded tip outward at (0,-19) */}
-        <path id="ollive-leaf" d="M0 0 C5 -5 5.4 -13 0 -19 C-5.4 -13 -5 -5 0 0 Z" />
+        {/* one leaf: pointed base at (0,0), rounded tip outward at (0,-23) */}
+        <path id="ollive-leaf" d="M0 0 C6 -6 6.4 -15 0 -23 C-6.4 -15 -6 -6 0 0 Z" />
       </defs>
 
-      {/* five leaves radiating from the center, 72° apart */}
+      {/* five leaves radiating 72° apart, bases pushed out for an open center */}
       <g transform="translate(32 32)">
-        <use href="#ollive-leaf" transform="rotate(0)" />
-        <use href="#ollive-leaf" transform="rotate(72)" />
-        <use href="#ollive-leaf" transform="rotate(144)" />
-        <use href="#ollive-leaf" transform="rotate(216)" />
-        <use href="#ollive-leaf" transform="rotate(288)" />
+        <use href="#ollive-leaf" transform="rotate(0) translate(0 -3.5)" />
+        <use href="#ollive-leaf" transform="rotate(72) translate(0 -3.5)" />
+        <use href="#ollive-leaf" transform="rotate(144) translate(0 -3.5)" />
+        <use href="#ollive-leaf" transform="rotate(216) translate(0 -3.5)" />
+        <use href="#ollive-leaf" transform="rotate(288) translate(0 -3.5)" />
       </g>
     </svg>
   )
