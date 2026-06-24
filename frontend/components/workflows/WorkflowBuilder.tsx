@@ -10,7 +10,7 @@ import '@xyflow/react/dist/style.css'
 import {
   ArrowLeft, Bot, GitBranch, ShieldCheck, Save, Play, Trash2, Loader2, Radio,
   History, CheckCircle2, XCircle, Clock, CalendarClock, Plus, RefreshCw,
-  Github, BookOpen,
+  Github, BookOpen, MousePointerClick,
 } from 'lucide-react'
 import { nodeTypes } from './WorkflowNodes'
 import { styleEdges, graphToFlow, flowToGraph } from '@/lib/workflowGraph'
@@ -39,6 +39,7 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState(false)
   const [runOpen, setRunOpen] = useState(false)
   const [runInput, setRunInput] = useState('')
   const [inspectorTab, setInspectorTab] = useState<'node' | 'channels' | 'runs'>('node')
@@ -100,11 +101,14 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
 
   const handleSave = async () => {
     setSaving(true)
+    setSaveError(false)
     try {
       const graph = flowToGraph(nodes, edges)
       graph.channel_config = channelConfig
       await onSave(graph, name.trim() || 'Untitled workflow')
       setSavedAt(new Date().toLocaleTimeString())
+    } catch {
+      setSaveError(true)
     } finally {
       setSaving(false)
     }
@@ -153,17 +157,18 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
           </button>
         </div>
         <div className="flex-1" />
-        {savedAt && <span className="text-[11px] text-white/25">saved {savedAt}</span>}
+        {saveError && <span className="text-[11px] text-red-400">Save failed — retry</span>}
+        {!saveError && savedAt && <span className="text-[11px] text-white/25">Saved ✓ {savedAt}</span>}
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white/[0.06] text-white/70 hover:bg-white/[0.10] hover:text-white disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-50"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
         </button>
         <button
           onClick={() => setRunOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-white text-black font-medium hover:bg-white/90"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
         >
           <Play size={12} /> Run
         </button>
@@ -207,11 +212,10 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
           ) : inspectorTab === 'channels' ? (
             <ChannelsPanel config={channelConfig} onChange={setChannelConfig} conflict={channelConflict} />
           ) : !selected ? (
-            <div className="text-center pt-10">
-              <p className="text-white/30 text-sm">Select a node to configure it</p>
-              <p className="text-white/15 text-xs mt-2 leading-relaxed">
-                Drag from a node&apos;s right handle to another node&apos;s left handle to connect them.
-              </p>
+            <div className="flex flex-col items-center justify-center h-full px-6 text-center text-white/40">
+              <MousePointerClick size={20} className="mb-2 text-white/25" />
+              <p className="text-sm">Select a node to configure it</p>
+              <p className="mt-1 text-xs text-white/30">Drag a node&apos;s right handle to another node&apos;s left to connect them.</p>
             </div>
           ) : (
             <div className="space-y-4">
