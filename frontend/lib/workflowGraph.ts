@@ -12,7 +12,7 @@ export function styleEdges(nodes: Node[], edges: Edge[]): Edge[] {
       ...e,
       animated: delegated,
       style: delegated
-        ? { stroke: '#fbbf24', strokeWidth: 1.5, strokeDasharray: '6 5' }
+        ? { stroke: '#34d399', strokeWidth: 1.5, strokeDasharray: '6 5' }
         : { stroke: 'rgba(255,255,255,0.25)', strokeWidth: 1.5 },
     }
   })

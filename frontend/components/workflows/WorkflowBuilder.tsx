@@ -695,12 +695,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function LegendPanel() {
   return (
-    <div className="absolute bottom-3 left-3 z-10 bg-[#161616]/90 border border-white/[0.06] rounded-lg px-3 py-2 text-[10px] text-white/50 space-y-1">
+    <div className="absolute top-3 left-3 z-10 bg-[#161616]/90 border border-white/[0.06] rounded-lg px-3 py-2 text-[10px] text-white/50 space-y-1">
       <div className="flex items-center gap-2">
         <span className="w-5 border-t border-white/40" /> deterministic
       </div>
       <div className="flex items-center gap-2">
-        <span className="w-5 border-t border-dashed border-amber-400" /> agent-decided
+        <span className="w-5 border-t border-dashed border-emerald-400" /> agent-decided
       </div>
     </div>
   )
