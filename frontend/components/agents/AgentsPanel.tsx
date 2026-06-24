@@ -141,7 +141,7 @@ export default function AgentsPanel() {
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{agent.name}</p>
-                  <p className="text-xs text-white/40 truncate">{agent.role} · {agent.model}</p>
+                  <p className="text-xs text-white/40 truncate">{agent.role} · {agent.model || '—'}</p>
                 </div>
               </button>
             ))

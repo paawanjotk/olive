@@ -187,7 +187,7 @@ export default function AgentForm({ initial, onSubmit, onCancel }: AgentFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate()) return
+    if (!validate()) { setSection('identity'); return }
     setSaveError(null)
     setSaved(false)
     setLoading(true)
