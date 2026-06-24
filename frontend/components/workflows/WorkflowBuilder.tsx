@@ -234,12 +234,18 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
             <Controls className="!bg-[#161616] !border-white/10 [&_button]:!bg-[#161616] [&_button]:!border-white/10 [&_button]:!fill-white/60" />
             <MiniMap
               pannable zoomable
-              className="!bg-[#111]"
+              bgColor="#0d0d0d"
+              className="!bg-[#0d0d0d] !rounded-xl !border !border-white/[0.07] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
               nodeColor={(n) => ({
                 trigger: '#38bdf8', agent: '#a78bfa', supervisor: '#fbbf24',
                 checkpoint: '#34d399', end: '#666',
               } as Record<string, string>)[n.type ?? 'agent'] ?? '#666'}
-              maskColor="rgba(0,0,0,0.6)"
+              nodeStrokeColor="rgba(255,255,255,0.14)"
+              nodeStrokeWidth={2}
+              nodeBorderRadius={3}
+              maskColor="rgba(8,8,8,0.72)"
+              maskStrokeColor="rgba(16,185,129,0.45)"
+              maskStrokeWidth={2}
             />
             <LegendPanel />
           </ReactFlow>
