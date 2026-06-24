@@ -2,11 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Bot, Loader2, AlertCircle, Merge } from 'lucide-react'
-import AgentCard from './AgentCard'
 import AgentForm from './AgentForm'
 import { listAgents, createAgent, updateAgent, deleteAgent, deduplicateAgents } from '@/lib/api'
 import type { Agent, AgentCreate } from '@/lib/types'
-import { cn } from '@/lib/utils'
+import { cn, plural } from '@/lib/utils'
 
 type View = 'list' | 'create' | 'edit'
 
@@ -80,7 +79,7 @@ export default function AgentsPanel() {
             <Bot size={15} className="text-white/40" />
             <span className="text-sm font-semibold text-white">Agents</span>
             {!loading && (
-              <span className="text-[11px] text-white/20 font-mono">{agents.length}</span>
+              <span className="text-[11px] text-white/20 font-mono">{plural(agents.length, 'agent')}</span>
             )}
           </div>
           <div className="flex items-center gap-1">
@@ -127,15 +126,24 @@ export default function AgentsPanel() {
             </div>
           ) : (
             agents.map((agent) => (
-              <AgentCard
+              <button
                 key={agent.id}
-                agent={agent}
-                isSelected={editing?.id === agent.id}
                 onClick={() => startEdit(agent)}
-                onEdit={() => startEdit(agent)}
-                onDelete={() => handleDelete(agent)}
-                compact
-              />
+                className={cn(
+                  'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors',
+                  editing?.id === agent.id
+                    ? 'bg-emerald-500/[0.12] text-emerald-100'
+                    : 'text-white hover:bg-white/[0.05]'
+                )}
+              >
+                <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center flex-shrink-0 text-base">
+                  {(agent.meta?.avatar_emoji as string) ?? '🤖'}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{agent.name}</p>
+                  <p className="text-xs text-white/40 truncate">{agent.role} · {agent.model}</p>
+                </div>
+              </button>
             ))
           )}
         </div>
@@ -144,15 +152,17 @@ export default function AgentsPanel() {
       {/* Right: Form or empty state */}
       <div className="flex-1 flex flex-col h-full overflow-hidden">
         {view === 'list' && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-            <div className="w-16 h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-3xl mb-4">
-              🤖
+          <div className="flex flex-col items-center justify-center h-full text-center px-6">
+            <div className="w-14 h-14 rounded-2xl bg-white/[0.06] flex items-center justify-center mb-4">
+              <Bot size={26} className="text-emerald-400" />
             </div>
-            <h2 className="text-white font-semibold text-lg mb-2">Agent Studio</h2>
-            <p className="text-white/30 text-sm max-w-sm leading-relaxed">
-              Create AI agents with custom personalities, tools, and behavioral guidelines.
-              Select an agent to edit it, or click <span className="text-white/50">+ New</span> to create one.
+            <h2 className="text-white font-semibold text-lg">Agent Studio</h2>
+            <p className="mt-1.5 max-w-sm text-sm text-white/40">
+              Create AI agents with custom personalities, tools, and guardrails. Select an agent to edit, or create a new one.
             </p>
+            <button onClick={() => { setEditing(null); setView('create') }} className="mt-5 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <Plus size={15} /> New agent
+            </button>
           </div>
         )}
 
