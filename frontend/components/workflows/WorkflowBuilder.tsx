@@ -107,8 +107,10 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
       graph.channel_config = channelConfig
       await onSave(graph, name.trim() || 'Untitled workflow')
       setSavedAt(new Date().toLocaleTimeString())
-    } catch {
+    } catch (err) {
+      console.error(err)
       setSaveError(true)
+      setSavedAt(null)
     } finally {
       setSaving(false)
     }
@@ -162,13 +164,13 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
         </button>
         <button
           onClick={() => setRunOpen(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Play size={12} /> Run
         </button>
