@@ -231,3 +231,9 @@ body {
     radial-gradient(60% 50% at 50% 0%, rgba(16, 185, 129, 0.06), transparent 70%),
     radial-gradient(40% 40% at 100% 100%, rgba(16, 185, 129, 0.05), transparent 70%);
 }
+
+/* Minimap viewport outline — round the corners of the stroked viewport rect */
+.react-flow__minimap-mask {
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}

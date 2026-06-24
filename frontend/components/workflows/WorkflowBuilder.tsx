@@ -235,7 +235,7 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
             <MiniMap
               pannable zoomable
               bgColor="#0d0d0d"
-              className="!bg-[#0d0d0d] !rounded-xl !border !border-white/[0.07] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)] [&_.react-flow__minimap-mask]:[stroke-linejoin:round]"
+              className="!bg-[#0d0d0d] !rounded-xl !border !border-white/[0.07] overflow-hidden shadow-[0_8px_24px_rgba(0,0,0,0.45)]"
               nodeColor={(n) => ({
                 trigger: '#38bdf8', agent: '#a78bfa', supervisor: '#fbbf24',
                 checkpoint: '#34d399', end: '#666',
@@ -244,8 +244,8 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
               nodeStrokeWidth={2}
               nodeBorderRadius={3}
               maskColor="rgba(8,8,8,0.72)"
-              maskStrokeColor="rgba(16,185,129,0.28)"
-              maskStrokeWidth={1.5}
+              maskStrokeColor="rgba(16,185,129,0.3)"
+              maskStrokeWidth={4}
             />
             <LegendPanel />
           </ReactFlow>
