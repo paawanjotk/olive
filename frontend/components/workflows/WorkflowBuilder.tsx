@@ -31,6 +31,20 @@ interface Props {
 let _seq = 0
 const newId = (t: string) => `${t}_${Date.now().toString(36)}_${_seq++}`
 
+// Returns human-readable problems that should block a run.
+function validateGraph(nodes: { id: string; type?: string; data: Record<string, unknown> }[]): string[] {
+  const problems: string[] = []
+  const executable = nodes.filter((n) => n.type === 'agent' || n.type === 'supervisor')
+  if (executable.length === 0) problems.push('Add at least one agent or supervisor node.')
+  for (const n of executable) {
+    if (!n.data?.agentId) {
+      const label = (n.data?.label as string) || n.id
+      problems.push(`"${label}" has no agent assigned — pick one in the node's config panel.`)
+    }
+  }
+  return problems
+}
+
 function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution, channelOwners }: Props) {
   const initial = useMemo(() => graphToFlow(workflow.graph_json), [workflow.id])
   const [nodes, setNodes, onNodesChange] = useNodesState(initial.nodes)
@@ -46,6 +60,12 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
   const [channelConfig, setChannelConfig] = useState<any>(workflow.graph_json.channel_config ?? {})
   const [slackChannels, setSlackChannels] = useState<{ id: string; name: string }[]>([])
   const [slackChannelsLoading, setSlackChannelsLoading] = useState(false)
+  const [runProblems, setRunProblems] = useState<string[]>([])
+
+  const canRun = validateGraph(nodes).length === 0
+
+  // Clear run-validation problems whenever the graph changes.
+  useEffect(() => { setRunProblems([]) }, [nodes])
 
   // Warn if this workflow's Slack channel is already claimed by a different one.
   const slackChannelId = channelConfig.slack?.channel_id
@@ -169,12 +189,30 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
           {saving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />} Save
         </button>
         <button
-          onClick={() => setRunOpen(true)}
+          onClick={() => {
+            const problems = validateGraph(nodes)
+            if (problems.length) { setRunProblems(problems); return }
+            setRunProblems([])
+            setRunOpen(true)
+          }}
+          disabled={!canRun}
+          title={canRun ? 'Run workflow' : 'Resolve the highlighted problems first'}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-emerald-500 hover:bg-emerald-400 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <Play size={12} /> Run
         </button>
       </div>
+
+      {runProblems.length > 0 && (
+        <div className="flex-shrink-0 mx-4 mt-2 mb-1 rounded-lg border border-amber-500/30 bg-amber-500/[0.08] px-3 py-2.5">
+          <p className="text-xs font-medium text-amber-300 mb-1">Fix before running:</p>
+          <ul className="space-y-0.5">
+            {runProblems.map((p, i) => (
+              <li key={i} className="text-xs text-amber-300/80">• {p}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="flex-1 flex min-h-0">
         {/* Canvas */}
