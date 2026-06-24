@@ -244,8 +244,8 @@ function BuilderInner({ workflow, agents, onSave, onRun, onBack, onOpenExecution
               nodeStrokeWidth={2}
               nodeBorderRadius={3}
               maskColor="rgba(8,8,8,0.72)"
-              maskStrokeColor="rgba(16,185,129,0.3)"
-              maskStrokeWidth={4}
+              maskStrokeColor="rgba(16,185,129,0.32)"
+              maskStrokeWidth={2.5}
             />
             <LegendPanel />
           </ReactFlow>
