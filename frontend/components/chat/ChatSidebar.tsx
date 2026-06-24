@@ -231,7 +231,7 @@ export default function ChatSidebar({
       >
         <div className="flex items-center gap-2 px-1.5 py-1">
           <div className="w-7 h-7 rounded-lg bg-white/[0.08] flex items-center justify-center flex-shrink-0">
-            <OliveLogo size={18} className="text-white" />
+            <OliveLogo size={18} className="text-emerald-400" />
           </div>
         </div>
         <button
@@ -273,11 +273,11 @@ export default function ChatSidebar({
                 'w-full flex items-center rounded-lg transition-colors text-sm',
                 collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3 py-2.5',
                 isActive
-                  ? 'bg-white/[0.08] text-white'
+                  ? 'bg-emerald-500/[0.12] text-emerald-200'
                   : 'text-[#c0c0c0] hover:bg-white/[0.06] hover:text-white'
               )}
             >
-              <Icon size={15} className={cn('flex-shrink-0', isActive ? 'text-white/80' : 'text-white/60')} />
+              <Icon size={15} className={cn('flex-shrink-0', isActive ? 'text-emerald-400' : 'text-white/60')} />
               {!collapsed && <span>{label}</span>}
             </button>
           )

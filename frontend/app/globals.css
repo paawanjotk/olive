@@ -37,10 +37,14 @@ body {
   background: #444;
 }
 
-/* Selection */
+/* Selection — brand green tint */
 ::selection {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(16, 185, 129, 0.28);
   color: #ffffff;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.55);
 }
 
 /* Prose / markdown styles for chat */
@@ -85,13 +89,13 @@ body {
 }
 
 .prose-chat a {
-  color: #8b5cf6;
+  color: #34d399;
   text-decoration: underline;
-  text-decoration-color: rgba(139, 92, 246, 0.4);
+  text-decoration-color: rgba(52, 211, 153, 0.4);
 }
 
 .prose-chat a:hover {
-  color: #a78bfa;
+  color: #6ee7b7;
 }
 
 .prose-chat ul,
@@ -113,7 +117,7 @@ body {
 }
 
 .prose-chat blockquote {
-  border-left: 3px solid #7c3aed;
+  border-left: 3px solid #10b981;
   padding-left: 1em;
   color: #9ca3af;
   margin: 1em 0;
@@ -121,13 +125,13 @@ body {
 }
 
 .prose-chat code {
-  background: rgba(124, 58, 237, 0.15);
-  border: 1px solid rgba(124, 58, 237, 0.25);
+  background: rgba(16, 185, 129, 0.13);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   border-radius: 4px;
   padding: 0.15em 0.4em;
   font-family: 'Fira Code', 'JetBrains Mono', Consolas, monospace;
   font-size: 0.875em;
-  color: #c4b5fd;
+  color: #6ee7b7;
 }
 
 .prose-chat pre {
@@ -210,4 +214,20 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 4px;
+}
+
+/* Fade-in (used by the chat welcome screen) */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Ambient brand-green glow — a soft radial wash for app surfaces */
+.app-glow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 50% 0%, rgba(16, 185, 129, 0.06), transparent 70%),
+    radial-gradient(40% 40% at 100% 100%, rgba(16, 185, 129, 0.05), transparent 70%);
 }

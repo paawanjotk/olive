@@ -108,7 +108,7 @@ export default function ChatInput({
           className={cn(
             'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-150',
             canSend
-              ? 'bg-white text-black hover:bg-white/90 active:scale-95'
+              ? 'bg-emerald-500 text-white hover:bg-emerald-400 active:scale-95'
               : isStreaming
               ? 'bg-white/20 text-white cursor-pointer hover:bg-white/30 active:scale-95'
               : 'bg-[#2a2a2a] text-white/20 cursor-not-allowed'
@@ -130,7 +130,7 @@ export default function ChatInput({
         className={cn(
           'flex items-end gap-2 px-4 py-3.5 rounded-3xl',
           'bg-[#1f1f1f] border border-white/[0.08]',
-          'focus-within:border-white/[0.16] transition-all duration-200'
+          'focus-within:border-emerald-500/40 transition-all duration-200'
         )}
       >
         {inputRow}
@@ -147,7 +147,7 @@ export default function ChatInput({
             'bg-[#1f1f1f] border transition-all duration-200',
             isStreaming
               ? 'border-white/[0.06]'
-              : 'border-white/[0.08] hover:border-white/[0.12] focus-within:border-white/[0.2]'
+              : 'border-white/[0.08] hover:border-white/[0.12] focus-within:border-emerald-500/40'
           )}
         >
           {inputRow}
